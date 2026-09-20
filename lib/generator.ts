@@ -167,3 +167,54 @@ export function generatePuzzle({ mode, difficulty, seed }: GenerateOptions): Puz
 export function coordEquals(a: Coord, b: Coord): boolean {
   return sameCoord(a, b);
 }
+
+export interface GenerateFullCoverageOptions {
+  mode: GameMode;
+  size: number;
+  seed: number;
+}
+
+/**
+ * Builds a maze where the path covers every single cell (a Hamiltonian path)
+ * and every cell but the last carries an arrow — no blocked tiles, no gaps.
+ * This is the dense "every tile is part of one long winding corridor" style,
+ * as opposed to generatePuzzle's sparser grid-with-obstacles style.
+ */
+export function generateFullCoveragePuzzle({ mode, size, seed }: GenerateFullCoverageOptions): Puzzle {
+  const rand = mulberry32(seed);
+  const target = size * size;
+
+  let path = generateLongPath(rand, size, target, target, 400_000);
+  if (!path || path.length < target) {
+    // Fallback: boustrophedon (snake) path — always covers every cell.
+    path = [];
+    for (let r = 0; r < size; r++) {
+      const cols = r % 2 === 0 ? [...Array(size).keys()] : [...Array(size).keys()].reverse();
+      for (const c of cols) path.push({ row: r, col: c });
+    }
+  }
+
+  const grid = makeEmptyGrid(size);
+  for (let i = 0; i < path.length - 1; i++) {
+    const dir = directionBetween(path[i], path[i + 1]) as Direction;
+    grid[path[i].row][path[i].col].forcedDir = dir;
+  }
+
+  const start = path[0];
+  const end = path[path.length - 1];
+  grid[start.row][start.col].type = "start";
+  grid[end.row][end.col].type = "end";
+  grid[end.row][end.col].forcedDir = undefined;
+
+  return {
+    id: `${mode}-full-${size}-${seed}`,
+    mode,
+    size,
+    cells: grid,
+    start,
+    end,
+    parPath: path,
+    difficulty: size,
+    seed,
+  };
+}

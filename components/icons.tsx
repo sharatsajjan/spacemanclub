@@ -88,6 +88,40 @@ export function HeartIcon({ className = "", filled = true }: { className?: strin
   );
 }
 
+export function WaterDropIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M12 2.5C9 7 5.5 11 5.5 15a6.5 6.5 0 0 0 13 0c0-4-3.5-8-6.5-12.5Z" />
+    </svg>
+  );
+}
+
+export function PaletteIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.6}>
+      <path
+        d="M12 3a9 8 0 1 0 0 16c1.1 0 1.8-.9 1.8-1.8 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-.9.7-1.6 1.6-1.6H16a4 4 0 0 0 4-4c0-3.9-3.6-6-8-6Z"
+        strokeLinejoin="round"
+      />
+      <circle cx="7.5" cy="11" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="9.5" cy="7.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="14" cy="7" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function SettingsIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.6}>
+      <path
+        d="M12 2 4 6.5v11L12 22l8-4.5v-11L12 2Z"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3.2" />
+    </svg>
+  );
+}
+
 export function UndoIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.8}>
