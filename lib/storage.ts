@@ -1,25 +1,36 @@
-import { PlayerProfile, PuzzleResult } from "./types";
-import { levelFromXp } from "./scoring";
-import { ACHIEVEMENTS, newlyUnlocked } from "./achievements";
-import { todayDateString } from "./dailySeed";
+import { LevelResult, PlayerProfile } from "./types";
+import { DEFAULT_THEME } from "./themes";
 
-const PROFILE_KEY = "arrowflow.profile.v1";
+const PROFILE_KEY = "arrowflow.profile.v2";
+export const MAX_LIVES = 3;
+export const LIFE_REFILL_MS = 15 * 60 * 1000;
 
 export function defaultProfile(): PlayerProfile {
   return {
-    xp: 0,
-    level: 1,
-    dailyStreak: 0,
-    lastDailyCompletedDate: null,
-    endlessBestLevel: 1,
-    endlessHighScore: 0,
-    challengeHighScore: 0,
-    totalPuzzlesSolved: 0,
+    currentLevel: 1,
+    bestLevelReached: 1,
+    coins: 0,
     totalStars: 0,
-    threeStarClears: 0,
-    achievements: [],
+    totalLevelsCompleted: 0,
+    lives: MAX_LIVES,
+    nextLifeAt: null,
+    theme: DEFAULT_THEME,
     playerName: "Player",
   };
+}
+
+/** Recomputes lives against the current time — refills one life per LIFE_REFILL_MS elapsed. */
+export function refillLives(profile: PlayerProfile): PlayerProfile {
+  if (profile.lives >= MAX_LIVES || profile.nextLifeAt === null) return profile;
+  let lives = profile.lives;
+  let nextLifeAt: number | null = profile.nextLifeAt;
+  const now = Date.now();
+  while (nextLifeAt !== null && now >= nextLifeAt && lives < MAX_LIVES) {
+    lives += 1;
+    nextLifeAt = lives < MAX_LIVES ? nextLifeAt + LIFE_REFILL_MS : null;
+  }
+  if (lives === profile.lives && nextLifeAt === profile.nextLifeAt) return profile;
+  return { ...profile, lives, nextLifeAt };
 }
 
 export function loadProfile(): PlayerProfile {
@@ -28,7 +39,7 @@ export function loadProfile(): PlayerProfile {
     const raw = window.localStorage.getItem(PROFILE_KEY);
     if (!raw) return defaultProfile();
     const parsed = JSON.parse(raw);
-    return { ...defaultProfile(), ...parsed };
+    return refillLives({ ...defaultProfile(), ...parsed });
   } catch {
     return defaultProfile();
   }
@@ -43,85 +54,48 @@ export function saveProfile(profile: PlayerProfile): void {
   }
 }
 
-export function isDailyCompletedToday(profile: PlayerProfile): boolean {
-  return profile.lastDailyCompletedDate === todayDateString();
-}
-
-function daysBetween(a: string, b: string): number {
-  const da = new Date(`${a}T00:00:00`).getTime();
-  const db = new Date(`${b}T00:00:00`).getTime();
-  return Math.round((db - da) / (1000 * 60 * 60 * 24));
-}
-
-export interface ApplyResultOutcome {
-  profile: PlayerProfile;
-  leveledUp: boolean;
-  newLevel: number;
-  unlockedAchievements: typeof ACHIEVEMENTS;
-  streakContinued: boolean;
-}
-
-/** Folds a finished puzzle's result into the persisted profile: XP, streaks, high scores, achievements. */
-export function applyResult(profile: PlayerProfile, result: PuzzleResult): ApplyResultOutcome {
-  const before = profile;
-  const next: PlayerProfile = { ...profile };
-
-  next.xp += result.xpGained;
-  next.totalPuzzlesSolved += 1;
-  next.totalStars += result.stars;
-  if (result.stars === 3) next.threeStarClears += 1;
-
-  const { level } = levelFromXp(next.xp);
-  const leveledUp = level > before.level;
-  next.level = level;
-
-  let streakContinued = false;
-  if (result.mode === "daily") {
-    const today = todayDateString();
-    if (next.lastDailyCompletedDate !== today) {
-      if (next.lastDailyCompletedDate && daysBetween(next.lastDailyCompletedDate, today) === 1) {
-        next.dailyStreak += 1;
-        streakContinued = true;
-      } else {
-        next.dailyStreak = 1;
-      }
-      next.lastDailyCompletedDate = today;
-    }
-  }
-
-  const unlocked = newlyUnlocked(before, next);
-  if (unlocked.length > 0) {
-    next.achievements = [...next.achievements, ...unlocked.map((a) => a.id)];
-  }
-
-  saveProfile(next);
-
-  return {
-    profile: next,
-    leveledUp,
-    newLevel: next.level,
-    unlockedAchievements: unlocked,
-    streakContinued,
-  };
-}
-
-/** A challenge run's total score (summed across every puzzle solved in the run) vs. per-puzzle score. */
-export function recordChallengeRun(profile: PlayerProfile, totalScore: number): PlayerProfile {
-  const next = { ...profile, challengeHighScore: Math.max(profile.challengeHighScore, totalScore) };
+/** Loses one life; starts the refill timer if this is the first life lost since full. */
+export function loseLife(profile: PlayerProfile): PlayerProfile {
+  const refreshed = refillLives(profile);
+  if (refreshed.lives <= 0) return refreshed;
+  const lives = refreshed.lives - 1;
+  const nextLifeAt = refreshed.nextLifeAt ?? Date.now() + LIFE_REFILL_MS;
+  const next = { ...refreshed, lives, nextLifeAt };
   saveProfile(next);
   return next;
 }
 
-/** An endless run ends when lives run out; records how far it got and its total score. */
-export function recordEndlessRun(
-  profile: PlayerProfile,
-  outcome: { finalLevel: number; totalScore: number }
-): PlayerProfile {
-  const next = {
-    ...profile,
-    endlessBestLevel: Math.max(profile.endlessBestLevel, outcome.finalLevel),
-    endlessHighScore: Math.max(profile.endlessHighScore, outcome.totalScore),
-  };
+export function grantLifeFromAd(profile: PlayerProfile): PlayerProfile {
+  const refreshed = refillLives(profile);
+  const lives = Math.min(MAX_LIVES, refreshed.lives + 1);
+  const nextLifeAt = lives >= MAX_LIVES ? null : refreshed.nextLifeAt;
+  const next = { ...refreshed, lives, nextLifeAt };
+  saveProfile(next);
+  return next;
+}
+
+export interface ApplyLevelOutcome {
+  profile: PlayerProfile;
+  isNewBest: boolean;
+}
+
+/** Folds a completed level's result into the profile: coins, stars, level progression. */
+export function applyLevelResult(profile: PlayerProfile, result: LevelResult): ApplyLevelOutcome {
+  const next: PlayerProfile = { ...profile };
+  next.coins += result.coinsEarned;
+  next.totalStars += result.stars;
+  next.totalLevelsCompleted += 1;
+
+  const isNewBest = result.level >= next.bestLevelReached;
+  if (isNewBest) next.bestLevelReached = result.level + 1;
+  next.currentLevel = Math.max(next.currentLevel, result.level + 1);
+
+  saveProfile(next);
+  return { profile: next, isNewBest };
+}
+
+export function setTheme(profile: PlayerProfile, theme: PlayerProfile["theme"]): PlayerProfile {
+  const next = { ...profile, theme };
   saveProfile(next);
   return next;
 }

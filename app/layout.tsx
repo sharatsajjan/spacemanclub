@@ -6,13 +6,12 @@ const display = Sora({ subsets: ["latin"], variable: "--font-display", weight: [
 const body = Inter({ subsets: ["latin"], variable: "--font-body" });
 
 export const metadata: Metadata = {
-  title: "ArrowFlow — Daily Path Puzzles",
-  description:
-    "Trace the path, obey the arrows, beat the grid. Daily puzzles, endless runs, and timed challenges.",
+  title: "ArrowFlow",
+  description: "Drag out each line to clear the maze. Calm, single-tone puzzles that scale from easy to hardest.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b1023",
+  themeColor: "#cdd6d8",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

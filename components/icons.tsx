@@ -88,9 +88,9 @@ export function HeartIcon({ className = "", filled = true }: { className?: strin
   );
 }
 
-export function WaterDropIcon({ className = "" }: { className?: string }) {
+export function WaterDropIcon({ className = "", style }: { className?: string; style?: React.CSSProperties }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+    <svg viewBox="0 0 24 24" className={className} style={style} fill="currentColor">
       <path d="M12 2.5C9 7 5.5 11 5.5 15a6.5 6.5 0 0 0 13 0c0-4-3.5-8-6.5-12.5Z" />
     </svg>
   );

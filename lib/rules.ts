@@ -1,4 +1,4 @@
-import { CellData, Coord, Direction, Puzzle } from "./types";
+import { Coord, Direction, MazeLine } from "./types";
 
 export const DIRECTIONS: Direction[] = ["up", "down", "left", "right"];
 
@@ -27,54 +27,35 @@ export function sameCoord(a: Coord, b: Coord): boolean {
   return a.row === b.row && a.col === b.col;
 }
 
-export function inBounds(size: number, c: Coord): boolean {
-  return c.row >= 0 && c.row < size && c.col >= 0 && c.col < size;
+export function inBounds(cols: number, rows: number, c: Coord): boolean {
+  return c.row >= 0 && c.row < rows && c.col >= 0 && c.col < cols;
 }
 
-export function cellAt(puzzle: Pick<Puzzle, "cells">, c: Coord): CellData {
-  return puzzle.cells[c.row][c.col];
-}
-
-export function neighbors(size: number, c: Coord): Coord[] {
+export function neighbors(cols: number, rows: number, c: Coord): Coord[] {
   return DIRECTIONS.map((d) => {
     const dd = delta(d);
     return { row: c.row + dd.row, col: c.col + dd.col };
-  }).filter((n) => inBounds(size, n));
+  }).filter((n) => inBounds(cols, rows, n));
 }
 
 /**
- * Whether moving from `path` (the path so far, path[last] = current cell) to `next`
- * is a legal step under the game's rules:
- *  - next must be orthogonally adjacent to the current cell
- *  - next must not be blocked
- *  - next must not already be in the path (no revisits/crossing)
- *  - if the current cell has a forcedDir, the move MUST follow it
+ * A line's path is fixed by the puzzle (no branching choice) — legality of a
+ * drag step is just "does the next cell match the next/previous step in this
+ * exact line's path". `progress` is the index into `line.path` the player
+ * has currently traced up to (0 = only the start dot is placed).
  */
-export function isLegalStep(
-  puzzle: Pick<Puzzle, "cells" | "size">,
-  path: Coord[],
-  next: Coord
-): boolean {
-  if (path.length === 0) return false;
-  const current = path[path.length - 1];
-  if (!inBounds(puzzle.size, next)) return false;
-  const dir = directionBetween(current, next);
-  if (!dir) return false;
-  const nextCell = cellAt(puzzle, next);
-  if (nextCell.type === "blocked") return false;
-  if (path.some((p) => sameCoord(p, next))) return false;
-  const currentCell = cellAt(puzzle, current);
-  if (currentCell.forcedDir && currentCell.forcedDir !== dir) return false;
-  return true;
+export function lineStepKind(
+  line: MazeLine,
+  progress: number,
+  candidate: Coord
+): "advance" | "retreat" | "wrong" {
+  const next = line.path[progress + 1];
+  if (next && sameCoord(next, candidate)) return "advance";
+  const prev = line.path[progress - 1];
+  if (prev && sameCoord(prev, candidate)) return "retreat";
+  return "wrong";
 }
 
-export function legalNextCells(puzzle: Pick<Puzzle, "cells" | "size">, path: Coord[]): Coord[] {
-  if (path.length === 0) return [];
-  const current = path[path.length - 1];
-  return neighbors(puzzle.size, current).filter((n) => isLegalStep(puzzle, path, n));
-}
-
-export function isPathComplete(puzzle: Pick<Puzzle, "end">, path: Coord[]): boolean {
-  if (path.length === 0) return false;
-  return sameCoord(path[path.length - 1], puzzle.end);
+export function isLineComplete(line: MazeLine, progress: number): boolean {
+  return progress >= line.path.length - 1;
 }

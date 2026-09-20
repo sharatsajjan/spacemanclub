@@ -3,30 +3,34 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+  /* Ocean theme defaults (matches lib/themes.ts DEFAULT_THEME) so there's no flash before hydration. */
+  --outer: #cdd6d8;
+  --panel: #e6eded;
+  --maze: #dbe6e6;
+  --text: #2f4a4c;
+  --sub: #5f8285;
+  --sub2: #7fa0a2;
+  --accent: #2f6b6e;
+  --accent2: #5c8a52;
+  --accent3: #3f8a8f;
+  --line: #2f6b6e;
+  --line-done: rgba(47, 107, 110, 0.3);
+  --btn-text: #eef7f7;
+  --chip: rgba(47, 107, 110, 0.1);
+  --danger: #a35c52;
 }
 
 html,
 body {
-  background: #0b1023;
-  color: #eef1ff;
+  background: var(--outer);
+  color: var(--text);
 }
 
 body {
-  background-image: radial-gradient(circle at 15% -10%, rgba(124, 92, 255, 0.28), transparent 45%),
-    radial-gradient(circle at 100% 0%, rgba(49, 230, 193, 0.16), transparent 40%);
-  background-attachment: fixed;
+  transition: background 0.25s ease, color 0.25s ease;
 }
 
-::selection {
-  background: rgba(124, 92, 255, 0.35);
-}
-
-.scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: rgba(124, 92, 255, 0.4);
-  border-radius: 999px;
+* {
+  -webkit-tap-highlight-color: transparent;
 }

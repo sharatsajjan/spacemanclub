@@ -1,36 +1,44 @@
 # ArrowFlow
 
-A path-tracing puzzle web app: connect **START** to **END** on a grid where some
-tiles carry a fixed arrow that forces which way you must leave them, and some
-tiles are blocked. Built with Next.js (App Router) + TypeScript + Tailwind, so
-the game logic in `lib/` and `hooks/` can be reused as-is in a React Native
-port later.
+A calm, single-tone maze puzzle: each level's grid is filled edge-to-edge
+with several separate pre-drawn lines, each connecting two dots. Drag from a
+line's arrowed start dot to its matching end dot to clear it — no branching
+choices, just tracing what's already there. Clear every line to finish the
+level. Built with Next.js (App Router) + TypeScript + Tailwind.
 
-## Modes
+## How a level works
 
-- **Daily** (`/daily`) — one puzzle a day, seeded from the date so everyone
-  gets the same grid. Builds a streak.
-- **Endless** (`/endless`) — puzzles keep coming, grid size / arrow density /
-  obstacles scale up with your level. No fail state.
-- **Challenge** (`/challenge`) — a 2-minute timed sprint through
-  back-to-back puzzles of rising difficulty; final score can be submitted to
-  a shared leaderboard.
+- The whole grid is a **Hamiltonian path** (visits every cell once), cut into
+  several disjoint pieces — each piece is one draggable line with its own
+  start/end dot.
+- Dragging onto a cell that isn't the correct next step in the *currently
+  active* line costs one of 3 lives and resets that line's progress; lives
+  refill over time or via a "watch an ad" bonus.
+- Difficulty follows a repeating wave, not a straight ramp: every 5 levels
+  cycles Easy → Medium → Medium → Hard → Hardest, each cycle's floor and
+  ceiling a little higher than the last, plateauing at a max rather than
+  growing forever — built to sustain levels up to 1,000+.
+- 5 selectable color themes (Linen, Slate Night, Sage, Dusk, Ocean), all
+  single-tone — no rainbow-per-line, applied via CSS variables so switching
+  is instant.
 
-Progress (XP, level, streak, endless level, achievements) is stored in
+Progress (level, coins, stars, lives, chosen theme) is stored in
 `localStorage` per device via `lib/storage.ts`.
 
 ## Game engine
 
-- `lib/generator.ts` — builds each puzzle from a long self-avoiding random
-  walk (Warnsdorff-biased backtracking so long paths are found reliably),
-  then layers forced-direction arrows and blocked cells onto it. The walk
-  itself is always solvable by construction.
-- `lib/rules.ts` — movement legality (adjacency, no revisits, forced-arrow
-  exits, blocked tiles).
-- `lib/solver.ts` — DFS solver used to verify solvability at generation time
-  and to power the in-game hint system.
-- `lib/scoring.ts` — par-based efficiency + speed bonus + hint penalty →
-  score, stars, XP; plus the XP → level curve.
+- `lib/mazeGenerator.ts` — builds the full-coverage Hamiltonian path
+  (Warnsdorff-biased backtracking DFS, reliable even on large grids) and
+  cuts it into the level's lines.
+- `lib/difficultyWave.ts` — the Easy/Medium/Medium/Hard/Hardest wave curve:
+  grid size, line count, and hint budget per level.
+- `lib/rules.ts` — drag legality: since each line's path is fixed, a step is
+  just "does this cell match the next/previous step in the active line".
+- `lib/scoring.ts` — stars + coins from mistakes/hints used.
+- `hooks/useMazeGame.ts` — owns per-line progress, the active drag, mistakes,
+  and hints for one puzzle.
+- `components/MazeCanvas.tsx` — the drag-interactive renderer (pointer
+  events, not click-to-select).
 
 ## Development
 
@@ -40,11 +48,3 @@ npm run dev
 ```
 
 Open http://localhost:3000.
-
-## Leaderboard API
-
-`app/api/leaderboard/route.ts` reads/writes `data/leaderboard.json` on disk.
-That's fine for local/self-hosted use; on a read-only serverless deploy
-(e.g. Vercel) it will only persist for the life of a function instance —
-swap `lib/leaderboardStore.ts` for a real database if you need a durable
-global leaderboard in production.

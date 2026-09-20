@@ -1,109 +1,108 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { usePlayerProfile } from "@/hooks/usePlayerProfile";
-import { isDailyCompletedToday } from "@/lib/storage";
-import { ProfileBadge } from "@/components/ProfileBadge";
-import { ModeCard } from "@/components/ModeCard";
-import { ACHIEVEMENTS } from "@/lib/achievements";
-import { FlameIcon, InfinityIcon, BoltIcon, StarIcon, TrophyIcon } from "@/components/icons";
+import { setTheme } from "@/lib/storage";
+import { ThemeStyle } from "@/components/ThemeStyle";
+import { ThemePicker } from "@/components/ThemePicker";
+import { BoltIcon, PaletteIcon, SettingsIcon } from "@/components/icons";
+import { ThemeId } from "@/lib/types";
 
 export default function HomePage() {
-  const { profile, hydrated } = usePlayerProfile();
-  const dailyDone = hydrated && isDailyCompletedToday(profile);
+  const router = useRouter();
+  const { profile, hydrated, setProfile } = usePlayerProfile();
+  const [showThemes, setShowThemes] = useState(false);
+
+  const handleThemeSelect = (id: ThemeId) => {
+    setProfile((p) => setTheme(p, id));
+  };
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
-      <header className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent to-accent2 flex items-center justify-center">
-            <BoltIcon className="w-5 h-5 text-white" />
+    <>
+      <ThemeStyle themeId={profile.theme} />
+      <main className="min-h-screen bg-outer flex flex-col items-center px-4 py-8">
+        <div className="w-full max-w-sm flex flex-col flex-1">
+          <div className="flex items-center gap-2.5 mb-6">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ background: "var(--accent)" }}
+            >
+              <BoltIcon className="w-4 h-4 text-btntext" />
+            </div>
+            <span className="font-bold text-lg text-text">ArrowFlow</span>
           </div>
-          <div>
-            <h1 className="font-display text-xl font-extrabold text-white leading-none">ArrowFlow</h1>
-            <p className="text-[11px] text-white/40 mt-0.5">Trace the path. Obey the arrows.</p>
+
+          <div className="flex justify-center gap-8 mb-8">
+            <Stat label="Coins" value={hydrated ? profile.coins.toLocaleString() : "–"} />
+            <Stat label="Stars" value={hydrated ? profile.totalStars.toLocaleString() : "–"} />
+          </div>
+
+          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+            <div
+              className="w-28 h-28 rounded-3xl flex flex-col items-center justify-center bg-maze"
+              style={{ border: "3px solid var(--accent)" }}
+            >
+              <span className="text-3xl font-extrabold text-accent">{hydrated ? profile.currentLevel : "–"}</span>
+              <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--accent2)" }}>
+                Level
+              </span>
+            </div>
+            <button
+              onClick={() => router.push("/play")}
+              disabled={!hydrated}
+              className="w-full rounded-2xl py-3.5 font-bold text-base disabled:opacity-50"
+              style={{ background: "var(--accent)", color: "var(--btn-text)" }}
+            >
+              Play
+            </button>
+          </div>
+
+          {showThemes && (
+            <div className="mb-4 p-4 rounded-2xl bg-panel">
+              <ThemePicker current={profile.theme} onSelect={handleThemeSelect} />
+            </div>
+          )}
+
+          <div className="flex justify-between mt-4">
+            <IconButton onClick={() => setShowThemes((s) => !s)} label="Change theme">
+              <PaletteIcon className="w-4 h-4" />
+            </IconButton>
+            <IconButton label="Settings">
+              <SettingsIcon className="w-4 h-4" />
+            </IconButton>
           </div>
         </div>
-      </header>
-
-      <div className="mb-8">
-        <ProfileBadge profile={profile} />
-      </div>
-
-      <div className="grid sm:grid-cols-3 gap-4 mb-8">
-        <ModeCard
-          href="/daily"
-          title="Daily Puzzle"
-          tagline="One fresh grid a day. Everyone gets the same one — keep your streak alive."
-          icon={<FlameIcon className="w-5 h-5 text-warn" />}
-          accentClass="bg-warn/15"
-          stat={{ label: "Streak", value: `${profile.dailyStreak} day${profile.dailyStreak === 1 ? "" : "s"}` }}
-          cta={dailyDone ? "Solved today ✓" : "Play"}
-        />
-        <ModeCard
-          href="/endless"
-          title="Endless"
-          tagline="Puzzles keep coming and keep getting tougher. See how deep you can go."
-          icon={<InfinityIcon className="w-5 h-5 text-accent2" />}
-          accentClass="bg-accent2/15"
-          stat={{ label: "Best Level", value: `${profile.endlessBestLevel}` }}
-          cta="Play"
-        />
-        <ModeCard
-          href="/challenge"
-          title="Challenge"
-          tagline="Race the clock. Solve as many puzzles as you can before time runs out."
-          icon={<TrophyIcon className="w-5 h-5 text-accent" />}
-          accentClass="bg-accent/15"
-          stat={{ label: "Best score", value: `${profile.challengeHighScore}` }}
-          cta="Play"
-        />
-      </div>
-
-      <section className="rounded-2xl bg-panel ring-1 ring-white/10 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display font-bold text-white">Progress</h2>
-          <span className="text-xs text-white/40">
-            {profile.achievements.length}/{ACHIEVEMENTS.length} achievements
-          </span>
-        </div>
-        <div className="grid grid-cols-3 gap-3 mb-5 text-center">
-          <MiniStat value={profile.totalPuzzlesSolved} label="Puzzles solved" />
-          <MiniStat value={profile.totalStars} label="Stars earned" icon={<StarIcon className="w-3.5 h-3.5 text-warn" />} />
-          <MiniStat value={profile.threeStarClears} label="Flawless clears" />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {ACHIEVEMENTS.map((a) => {
-            const unlocked = profile.achievements.includes(a.id);
-            return (
-              <div
-                key={a.id}
-                title={`${a.title} — ${a.description}`}
-                className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg ${
-                  unlocked ? "bg-accent/20" : "bg-panel2/60 grayscale opacity-40"
-                }`}
-              >
-                {a.icon}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <footer className="mt-8 text-center text-xs text-white/30">
-        Progress is saved on this device.
-      </footer>
-    </main>
+      </main>
+    </>
   );
 }
 
-function MiniStat({ value, label, icon }: { value: number; label: string; icon?: React.ReactNode }) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <div className="font-display font-extrabold text-white text-xl flex items-center justify-center gap-1">
-        {icon}
-        {value}
-      </div>
-      <div className="text-[11px] text-white/40 mt-0.5">{label}</div>
+    <div className="text-center">
+      <div className="font-extrabold text-sm text-accent">{value}</div>
+      <div className="text-[10px] uppercase tracking-wide text-sub2">{label}</div>
     </div>
+  );
+}
+
+function IconButton({
+  children,
+  onClick,
+  label,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      className="w-9 h-9 rounded-xl flex items-center justify-center bg-maze text-sub"
+    >
+      {children}
+    </button>
   );
 }

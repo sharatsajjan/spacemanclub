@@ -1,63 +1,50 @@
 export type Direction = "up" | "down" | "left" | "right";
 
-export type CellType = "empty" | "start" | "end" | "blocked";
-
 export interface Coord {
   row: number;
   col: number;
 }
 
-export interface CellData {
-  row: number;
-  col: number;
-  type: CellType;
-  /** If set, the path must leave this cell travelling in this direction. */
-  forcedDir?: Direction;
-}
+export type DifficultyTier = "Easy" | "Medium" | "Hard" | "Hardest";
 
-export type GameMode = "daily" | "endless" | "challenge";
+/** One separate draggable line within a maze — an ordered path from its start dot to its end dot. */
+export interface MazeLine {
+  id: number;
+  /** Ordered cells from the start dot (index 0) to the end dot (last index). */
+  path: Coord[];
+}
 
 export interface Puzzle {
   id: string;
-  mode: GameMode;
-  size: number;
-  cells: CellData[][];
-  start: Coord;
-  end: Coord;
-  /** A known-valid solution, used as "par" for scoring. */
-  parPath: Coord[];
-  difficulty: number;
+  level: number;
+  cols: number;
+  rows: number;
+  lines: MazeLine[];
+  tier: DifficultyTier;
   seed: number;
 }
 
-export interface PuzzleResult {
-  puzzleId: string;
-  mode: GameMode;
+export interface LevelResult {
+  level: number;
   completed: boolean;
-  path: Coord[];
-  parMoves: number;
-  playerMoves: number;
-  elapsedMs: number;
+  mistakes: number;
   hintsUsed: number;
-  stars: 0 | 1 | 2 | 3;
-  score: number;
-  xpGained: number;
+  elapsedMs: number;
+  stars: 1 | 2 | 3;
+  coinsEarned: number;
 }
 
+export type ThemeId = "linen" | "slate" | "sage" | "dusk" | "ocean";
+
 export interface PlayerProfile {
-  xp: number;
-  level: number;
-  dailyStreak: number;
-  lastDailyCompletedDate: string | null;
-  /** Highest level ever reached in a single Endless run (lives-based; runs restart at level 1). */
-  endlessBestLevel: number;
-  /** Best total score summed across one Endless run. */
-  endlessHighScore: number;
-  /** Best total score summed across one Challenge run. */
-  challengeHighScore: number;
-  totalPuzzlesSolved: number;
+  currentLevel: number;
+  bestLevelReached: number;
+  coins: number;
   totalStars: number;
-  threeStarClears: number;
-  achievements: string[];
+  totalLevelsCompleted: number;
+  lives: number;
+  /** Epoch ms when the next life finishes refilling; null when lives are full. */
+  nextLifeAt: number | null;
+  theme: ThemeId;
   playerName: string;
 }
