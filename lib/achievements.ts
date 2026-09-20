@@ -54,16 +54,16 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: "endless_10",
     title: "Deep Runner",
-    description: "Reach level 10 in Endless mode.",
+    description: "Reach level 10 in a single Endless run.",
     icon: "♾️",
-    isUnlocked: (p) => p.endlessLevel >= 10,
+    isUnlocked: (p) => p.endlessBestLevel >= 10,
   },
   {
     id: "endless_25",
     title: "Maze Master",
-    description: "Reach level 25 in Endless mode.",
+    description: "Reach level 25 in a single Endless run.",
     icon: "🌀",
-    isUnlocked: (p) => p.endlessLevel >= 25,
+    isUnlocked: (p) => p.endlessBestLevel >= 25,
   },
   {
     id: "flawless_10",

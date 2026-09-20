@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Coord, Puzzle } from "@/lib/types";
-import { legalNextCells, sameCoord } from "@/lib/rules";
+import { legalNextCells, neighbors, sameCoord } from "@/lib/rules";
 import { ArrowIcon } from "./icons";
 
 interface ArrowGridProps {
@@ -11,21 +11,45 @@ interface ArrowGridProps {
   onCellSelect: (c: Coord) => void;
   hintCell?: Coord | null;
   disabled?: boolean;
+  /**
+   * When provided, tiles adjacent to the current path tail that are NOT a
+   * legal next step (wrong direction, blocked) become tappable too — tapping
+   * one reports a mistake here instead of moving. Modes without lives leave
+   * this unset, so illegal tiles stay inert (can't be mis-tapped at all).
+   */
+  onWrongMove?: (c: Coord) => void;
 }
 
 function indexInPath(path: Coord[], c: Coord): number {
   return path.findIndex((p) => sameCoord(p, c));
 }
 
-export function ArrowGrid({ puzzle, path, onCellSelect, hintCell, disabled }: ArrowGridProps) {
+export function ArrowGrid({ puzzle, path, onCellSelect, hintCell, disabled, onWrongMove }: ArrowGridProps) {
   const { size } = puzzle;
   const cellPct = 100 / size;
   const strokePct = cellPct * 0.32;
+
+  const [wrongFlash, setWrongFlash] = useState<string | null>(null);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current); }, []);
 
   const legalNext = useMemo(
     () => (disabled ? [] : legalNextCells(puzzle, path)),
     [puzzle, path, disabled]
   );
+
+  const adjacentToTail = useMemo(() => {
+    if (disabled || !onWrongMove || path.length === 0) return [];
+    return neighbors(size, path[path.length - 1]);
+  }, [disabled, onWrongMove, path, size]);
+
+  const triggerWrongMove = (coord: Coord) => {
+    const key = `${coord.row},${coord.col}`;
+    setWrongFlash(key);
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    flashTimeoutRef.current = setTimeout(() => setWrongFlash(null), 350);
+    onWrongMove?.(coord);
+  };
 
   const connectors = useMemo(() => {
     const segments: { key: string; style: React.CSSProperties }[] = [];
@@ -78,20 +102,33 @@ export function ArrowGrid({ puzzle, path, onCellSelect, hintCell, disabled }: Ar
             const isBlocked = cell.type === "blocked";
             const isLegal = !isVisited && legalNext.some((n) => sameCoord(n, coord));
             const isHint = !!hintCell && sameCoord(hintCell, coord);
+            const isWrongCandidate =
+              !!onWrongMove && !isVisited && !isLegal && adjacentToTail.some((n) => sameCoord(n, coord));
+            const isFlashing = wrongFlash === `${cell.row}-${cell.col}`;
+
+            const handleClick = () => {
+              if (isLegal || isVisited) onCellSelect(coord);
+              else if (isWrongCandidate) triggerWrongMove(coord);
+            };
 
             return (
               <button
                 key={`${cell.row}-${cell.col}`}
                 type="button"
-                disabled={disabled || isBlocked || (!isLegal && !isVisited)}
-                onClick={() => onCellSelect(coord)}
+                disabled={disabled || (!isLegal && !isVisited && !isWrongCandidate)}
+                onClick={handleClick}
                 data-row={cell.row}
                 data-col={cell.col}
                 data-type={cell.type}
                 data-visited={isVisited}
+                data-legal={isLegal}
                 className={[
                   "relative m-[2.5%] rounded-md flex items-center justify-center transition-colors duration-150",
-                  isBlocked
+                  isFlashing
+                    ? "bg-danger/60"
+                    : isWrongCandidate
+                    ? "bg-panel2/50 hover:bg-danger/20 cursor-pointer"
+                    : isBlocked
                     ? "bg-ink/70 cursor-not-allowed"
                     : isVisited
                     ? "bg-accent/25"

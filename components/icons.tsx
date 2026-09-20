@@ -80,6 +80,14 @@ export function LightbulbIcon({ className = "" }: { className?: string }) {
   );
 }
 
+export function HeartIcon({ className = "", filled = true }: { className?: string; filled?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={filled ? 0 : 1.8}>
+      <path d="M12 20.5S3.5 15.2 3.5 9.3A4.8 4.8 0 0 1 12 6.4a4.8 4.8 0 0 1 8.5 2.9c0 5.9-8.5 11.2-8.5 11.2Z" />
+    </svg>
+  );
+}
+
 export function UndoIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.8}>

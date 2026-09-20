@@ -11,7 +11,7 @@ export function defaultProfile(): PlayerProfile {
     level: 1,
     dailyStreak: 0,
     lastDailyCompletedDate: null,
-    endlessLevel: 1,
+    endlessBestLevel: 1,
     endlessHighScore: 0,
     challengeHighScore: 0,
     totalPuzzlesSolved: 0,
@@ -89,10 +89,6 @@ export function applyResult(profile: PlayerProfile, result: PuzzleResult): Apply
     }
   }
 
-  if (result.mode === "endless") {
-    next.endlessHighScore = Math.max(next.endlessHighScore, result.score);
-  }
-
   const unlocked = newlyUnlocked(before, next);
   if (unlocked.length > 0) {
     next.achievements = [...next.achievements, ...unlocked.map((a) => a.id)];
@@ -109,21 +105,23 @@ export function applyResult(profile: PlayerProfile, result: PuzzleResult): Apply
   };
 }
 
-export function bumpEndlessLevel(profile: PlayerProfile): PlayerProfile {
-  const next = { ...profile, endlessLevel: profile.endlessLevel + 1 };
-  saveProfile(next);
-  return next;
-}
-
-export function resetEndlessProgress(profile: PlayerProfile): PlayerProfile {
-  const next = { ...profile, endlessLevel: 1 };
-  saveProfile(next);
-  return next;
-}
-
 /** A challenge run's total score (summed across every puzzle solved in the run) vs. per-puzzle score. */
 export function recordChallengeRun(profile: PlayerProfile, totalScore: number): PlayerProfile {
   const next = { ...profile, challengeHighScore: Math.max(profile.challengeHighScore, totalScore) };
+  saveProfile(next);
+  return next;
+}
+
+/** An endless run ends when lives run out; records how far it got and its total score. */
+export function recordEndlessRun(
+  profile: PlayerProfile,
+  outcome: { finalLevel: number; totalScore: number }
+): PlayerProfile {
+  const next = {
+    ...profile,
+    endlessBestLevel: Math.max(profile.endlessBestLevel, outcome.finalLevel),
+    endlessHighScore: Math.max(profile.endlessHighScore, outcome.totalScore),
+  };
   saveProfile(next);
   return next;
 }

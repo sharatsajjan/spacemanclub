@@ -45,7 +45,7 @@ export default function HomePage() {
           tagline="Puzzles keep coming and keep getting tougher. See how deep you can go."
           icon={<InfinityIcon className="w-5 h-5 text-accent2" />}
           accentClass="bg-accent2/15"
-          stat={{ label: "Level", value: `${profile.endlessLevel}` }}
+          stat={{ label: "Best Level", value: `${profile.endlessBestLevel}` }}
           cta="Play"
         />
         <ModeCard

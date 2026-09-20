@@ -49,8 +49,11 @@ export interface PlayerProfile {
   level: number;
   dailyStreak: number;
   lastDailyCompletedDate: string | null;
-  endlessLevel: number;
+  /** Highest level ever reached in a single Endless run (lives-based; runs restart at level 1). */
+  endlessBestLevel: number;
+  /** Best total score summed across one Endless run. */
   endlessHighScore: number;
+  /** Best total score summed across one Challenge run. */
   challengeHighScore: number;
   totalPuzzlesSolved: number;
   totalStars: number;
