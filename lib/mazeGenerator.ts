@@ -32,8 +32,8 @@ interface Complexity {
  * more complex "Level 171 / Super Hard" should feel than "Level 21".
  */
 const COMPLEXITY_BY_TIER: Record<DifficultyTier, Complexity> = {
-  Easy: { minLen: 2, maxLen: 5, turnBias: 0.35, spiralCoverage: 0.25, spiralRegionCells: 5 },
-  Medium: { minLen: 2, maxLen: 5, turnBias: 0.6, spiralCoverage: 0.45, spiralRegionCells: 5 },
+  Easy: { minLen: 2, maxLen: 4, turnBias: 0.35, spiralCoverage: 0.45, spiralRegionCells: 5 },
+  Medium: { minLen: 2, maxLen: 4, turnBias: 0.6, spiralCoverage: 0.55, spiralRegionCells: 5 },
   Hard: { minLen: 2, maxLen: 4, turnBias: 0.75, spiralCoverage: 0.6, spiralRegionCells: 5 },
   Hardest: { minLen: 2, maxLen: 4, turnBias: 0.85, spiralCoverage: 0.75, spiralRegionCells: 5 },
 };

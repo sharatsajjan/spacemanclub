@@ -29,8 +29,8 @@ const MAX_SCALE = 35;
  * is a gentle introduction to that tier, not the full density it reaches
  * once the wave repeats in later cycles.
  */
-const RAMP_LEVELS = 12;
-const RAMP_START_SCALE = 0.6;
+const RAMP_LEVELS = 4;
+const RAMP_START_SCALE = 1.5;
 
 export function tierForLevel(level: number): DifficultyTier {
   return TIERS[(level - 1) % CYCLE_LEN];
@@ -43,11 +43,11 @@ function cycleIndex(level: number): number {
 /** Internal difficulty knob driving board size — not a literal piece count. */
 function difficultyScaleForLevel(level: number): number {
   const pos = (level - 1) % CYCLE_LEN;
-  // Climbs to the board-size ceiling by around level 50 (was ~level 280) —
-  // fast enough that a player actually reaches max difficulty in normal
-  // play, instead of the game staying easy for the first hundred-plus
-  // levels before it matters.
-  const cycleBase = 3 + cycleIndex(level) * 2;
+  // Climbs to the board-size ceiling by around level 12. A player who opens
+  // the game sees a real puzzle within a handful of levels rather than
+  // having to grind dozens of near-empty boards before the game shows what
+  // it actually is.
+  const cycleBase = 9 + cycleIndex(level) * 11;
   const naturalScale = Math.min(MAX_SCALE, cycleBase + TIER_BONUS[pos]);
   if (level >= RAMP_LEVELS) return naturalScale;
   const rampFrac = level / RAMP_LEVELS;
