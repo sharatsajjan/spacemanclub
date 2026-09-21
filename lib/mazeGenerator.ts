@@ -13,9 +13,13 @@ interface Complexity {
    * tail has a choice of both, while growing it. Higher = more zigzags and
    * spirals instead of long straight runs. */
   turnBias: number;
-  /** How many reserved "spiral regions" (see buildSpiralPieces below) to
-   * carve into genuine multi-turn winding pieces. */
-  spiralRegionCount: number;
+  /** Fraction of the board to hand to reserved "spiral regions" (see
+   * buildSpiralPieces below), which become genuine multi-turn winding
+   * pieces. A straight piece is cheap to place anywhere; a bent one needs
+   * its whole swept lane clear, which only reliably happens inside these
+   * reserved regions — so this is the real lever on how twisty a board
+   * looks. */
+  spiralCoverage: number;
   /** Roughly how many cells each spiral region covers (one long piece per
    * region). */
   spiralRegionCells: number;
@@ -28,10 +32,10 @@ interface Complexity {
  * more complex "Level 171 / Super Hard" should feel than "Level 21".
  */
 const COMPLEXITY_BY_TIER: Record<DifficultyTier, Complexity> = {
-  Easy: { minLen: 2, maxLen: 3, turnBias: 0.15, spiralRegionCount: 0, spiralRegionCells: 0 },
-  Medium: { minLen: 2, maxLen: 5, turnBias: 0.4, spiralRegionCount: 1, spiralRegionCells: 6 },
-  Hard: { minLen: 3, maxLen: 7, turnBias: 0.6, spiralRegionCount: 1, spiralRegionCells: 12 },
-  Hardest: { minLen: 3, maxLen: 9, turnBias: 0.78, spiralRegionCount: 2, spiralRegionCells: 16 },
+  Easy: { minLen: 2, maxLen: 4, turnBias: 0.35, spiralCoverage: 0.2, spiralRegionCells: 6 },
+  Medium: { minLen: 2, maxLen: 5, turnBias: 0.6, spiralCoverage: 0.4, spiralRegionCells: 8 },
+  Hard: { minLen: 2, maxLen: 6, turnBias: 0.75, spiralCoverage: 0.55, spiralRegionCells: 9 },
+  Hardest: { minLen: 3, maxLen: 7, turnBias: 0.85, spiralCoverage: 0.65, spiralRegionCells: 10 },
 };
 
 function directionBetween(from: Coord, to: Coord): Coord {
@@ -100,10 +104,17 @@ function spiralPathThroughRegion(top: number, left: number, h: number, w: number
   return path;
 }
 
-function regionDimsForCells(cells: number): { h: number; w: number } {
-  const w = Math.max(2, Math.round(Math.sqrt(cells)));
+/**
+ * Region shapes are deliberately varied, since the shape decides what the
+ * spiral piece looks like: a 2-wide rectangle winds into a U, a 3-wide one
+ * serpentines, and a squarer one coils into a nested spiral. Mixing them
+ * keeps the board from repeating the same twist everywhere.
+ */
+function regionDimsForCells(cells: number, rand: () => number): { h: number; w: number } {
+  const roll = rand();
+  const w = roll < 0.35 ? 2 : roll < 0.7 ? 3 : Math.max(2, Math.round(Math.sqrt(cells)));
   const h = Math.max(2, Math.ceil(cells / w));
-  return { h, w };
+  return rand() < 0.5 ? { h, w } : { h: w, w: h };
 }
 
 interface SpiralRegion {
@@ -113,23 +124,41 @@ interface SpiralRegion {
   w: number;
 }
 
+/** The longest unbroken stretch of still-present cells along an ordered path. */
+function longestContiguousRun(path: Coord[], present: boolean[][]): Coord[] {
+  let best: Coord[] = [];
+  let run: Coord[] = [];
+  for (const cell of path) {
+    if (present[cell.row][cell.col]) {
+      run.push(cell);
+      if (run.length > best.length) best = run;
+    } else {
+      run = [];
+    }
+  }
+  return best;
+}
+
 /**
- * Picks non-overlapping (with a 1-cell gap between them) rectangles to
- * later become spiral pieces. Placement only — nothing is reserved on the
+ * Packs non-overlapping rectangles covering roughly `coverage` of the board,
+ * to later become spiral pieces. Regions may sit flush against each other —
+ * `buildSpiralPieces` resolves them in whatever order actually works, and
+ * releases any it can't place. Placement only: nothing is reserved on the
  * board here, `buildPieces` does that by consulting the returned rectangles.
  */
-function pickSpiralRegions(cols: number, rows: number, rand: () => number, count: number, cellsPerRegion: number): SpiralRegion[] {
-  if (count <= 0 || cellsPerRegion <= 0) return [];
-  const { h, w } = regionDimsForCells(cellsPerRegion);
-  if (h + 2 > rows || w + 2 > cols) return [];
+function pickSpiralRegions(cols: number, rows: number, rand: () => number, coverage: number, cellsPerRegion: number): SpiralRegion[] {
+  if (coverage <= 0 || cellsPerRegion <= 0) return [];
+  const targetCells = Math.floor(cols * rows * coverage);
+  const count = Math.floor(targetCells / cellsPerRegion);
+  if (count <= 0) return [];
 
   const placed: SpiralRegion[] = [];
-  for (let attempt = 0; attempt < count * 25 && placed.length < count; attempt++) {
+  for (let attempt = 0; attempt < count * 60 && placed.length < count; attempt++) {
+    const { h, w } = regionDimsForCells(cellsPerRegion, rand);
+    if (h > rows || w > cols) continue;
     const top = Math.floor(rand() * (rows - h + 1));
     const left = Math.floor(rand() * (cols - w + 1));
-    const clashes = placed.some(
-      (p) => top < p.top + p.h + 1 && top + h + 1 > p.top && left < p.left + p.w + 1 && left + w + 1 > p.left
-    );
+    const clashes = placed.some((p) => top < p.top + p.h && top + h > p.top && left < p.left + p.w && left + w > p.left);
     if (clashes) continue;
     placed.push({ top, left, h, w });
   }
@@ -143,10 +172,12 @@ function pickSpiralRegions(cols: number, rows: number, rand: () => number, count
  * is what makes this valid: sweeping a spiral piece's cells toward either
  * of its two open ends only ever crosses already-cleared cells or the
  * piece's own body, regardless of how many times it turns, since nothing
- * else on the board is left present to block it. A region whose both ends
- * still fail (e.g. boxed in by another still-present region) is left alone
- * — its cells stay present and fall through to the normal candidate scan
- * on the next pass, which already knows how to resolve any leftover cell.
+ * else on the board is left present to block it. Regions that sit flush
+ * against each other do block each other though, so this sweeps repeatedly:
+ * clearing one region opens the lane its neighbour needed, and passes
+ * continue until a whole pass places nothing. Any region still unplaceable
+ * after that is left alone — its cells stay present and fall through to the
+ * normal candidate scan, which already knows how to resolve leftover cells.
  */
 function buildSpiralPieces(
   regions: SpiralRegion[],
@@ -158,31 +189,47 @@ function buildSpiralPieces(
   rows: number
 ): void {
   const tempId = -5;
-  for (const region of shuffle(regions, rand)) {
-    const path = spiralPathThroughRegion(region.top, region.left, region.h, region.w).filter((c) => present[c.row][c.col]);
-    if (path.length < 2) continue;
+  let pending = shuffle(regions, rand);
 
-    const ends: { dir: Direction }[] = [];
-    const startTangent = directionFromDelta(directionBetween(path[1], path[0]));
-    if (startTangent) ends.push({ dir: startTangent });
-    const endTangent = directionFromDelta(directionBetween(path[path.length - 2], path[path.length - 1]));
-    if (endTangent) ends.push({ dir: endTangent });
+  while (pending.length > 0) {
+    const stillPending: SpiralRegion[] = [];
+    let placedAny = false;
 
-    for (const c of path) pieceIdGrid[c.row][c.col] = tempId;
-    let placed = false;
-    for (const { dir } of shuffle(ends, rand)) {
-      if (pieceCanExit(present, pieceIdGrid, tempId, path, cols, rows, dir)) {
-        const id = pieces.length;
-        for (const c of path) pieceIdGrid[c.row][c.col] = id;
-        pieces.push({ id, cells: path, direction: dir });
-        for (const c of path) present[c.row][c.col] = false;
-        placed = true;
-        break;
+    for (const region of pending) {
+      // Longest still-present RUN, not every still-present cell: dropping a
+      // consumed cell out of the middle would leave the remaining cells
+      // non-adjacent, and a piece whose consecutive cells aren't neighbours
+      // draws as a line jumping diagonally across the board.
+      const path = longestContiguousRun(spiralPathThroughRegion(region.top, region.left, region.h, region.w), present);
+      if (path.length < 2) continue;
+
+      const ends: Direction[] = [];
+      const startTangent = directionFromDelta(directionBetween(path[1], path[0]));
+      if (startTangent) ends.push(startTangent);
+      const endTangent = directionFromDelta(directionBetween(path[path.length - 2], path[path.length - 1]));
+      if (endTangent) ends.push(endTangent);
+
+      for (const c of path) pieceIdGrid[c.row][c.col] = tempId;
+      let placed = false;
+      for (const dir of shuffle(ends, rand)) {
+        if (pieceCanExit(present, pieceIdGrid, tempId, path, cols, rows, dir)) {
+          const id = pieces.length;
+          for (const c of path) pieceIdGrid[c.row][c.col] = id;
+          pieces.push({ id, cells: path, direction: dir });
+          for (const c of path) present[c.row][c.col] = false;
+          placed = true;
+          placedAny = true;
+          break;
+        }
+      }
+      if (!placed) {
+        for (const c of path) pieceIdGrid[c.row][c.col] = -1;
+        stillPending.push(region);
       }
     }
-    if (!placed) {
-      for (const c of path) pieceIdGrid[c.row][c.col] = -1;
-    }
+
+    if (!placedAny) break;
+    pending = stillPending;
   }
 }
 
@@ -249,7 +296,10 @@ function tryMergeIntoNeighborTail(
 }
 
 /** Randomized DFS: grow a simple path from `start` through present, unclaimed
- * cells, up to maxLen cells, for `tryRescue` to test as a candidate piece. */
+ * cells, up to maxLen cells, for `tryRescue` to test as a candidate piece.
+ * `offLimits` marks cells that are spoken for (reserved spiral regions):
+ * eating one would punch a hole in that region's spiral and break it into
+ * disconnected fragments. */
 function growScratchPath(
   start: Coord,
   present: boolean[][],
@@ -258,7 +308,8 @@ function growScratchPath(
   rand: () => number,
   tempId: number,
   cols: number,
-  rows: number
+  rows: number,
+  offLimits: boolean[][] | null
 ): Coord[] {
   const path: Coord[] = [start];
   pieceIdGrid[start.row][start.col] = tempId;
@@ -266,7 +317,16 @@ function growScratchPath(
   while (path.length < maxLen) {
     const options = DIRECTIONS.map((dir) => delta(dir))
       .map((d) => ({ row: cur.row + d.row, col: cur.col + d.col }))
-      .filter((c) => c.row >= 0 && c.row < rows && c.col >= 0 && c.col < cols && present[c.row][c.col] && pieceIdGrid[c.row][c.col] === -1);
+      .filter(
+        (c) =>
+          c.row >= 0 &&
+          c.row < rows &&
+          c.col >= 0 &&
+          c.col < cols &&
+          present[c.row][c.col] &&
+          pieceIdGrid[c.row][c.col] === -1 &&
+          !(offLimits && offLimits[c.row][c.col])
+      );
     if (options.length === 0) break;
     const next = options[Math.floor(rand() * options.length)];
     pieceIdGrid[next.row][next.col] = tempId;
@@ -289,13 +349,14 @@ function tryRescue(
   pieces: Piece[],
   rand: () => number,
   cols: number,
-  rows: number
+  rows: number,
+  offLimits: boolean[][] | null
 ): boolean {
   const tempId = -3;
   const RESCUE_MAX_LEN = 5;
   for (let attempt = 0; attempt < 6; attempt++) {
     for (let maxLen = RESCUE_MAX_LEN; maxLen >= 2; maxLen--) {
-      const path = growScratchPath(start, present, pieceIdGrid, maxLen, rand, tempId, cols, rows);
+      const path = growScratchPath(start, present, pieceIdGrid, maxLen, rand, tempId, cols, rows, offLimits);
       if (path.length < 2) continue;
       for (const cells of [path, path.slice().reverse()]) {
         for (const c of cells) pieceIdGrid[c.row][c.col] = tempId;
@@ -359,7 +420,7 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
   const pieces: Piece[] = [];
   let focus: Coord | null = null;
 
-  const spiralRegions = pickSpiralRegions(cols, rows, rand, complexity.spiralRegionCount, complexity.spiralRegionCells);
+  const spiralRegions = pickSpiralRegions(cols, rows, rand, complexity.spiralCoverage, complexity.spiralRegionCells);
   const reserved: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
   for (const region of spiralRegions) {
     for (let r = region.top; r < region.top + region.h; r++) {
@@ -416,7 +477,7 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
           resolvedAny = true;
           continue;
         }
-        if (tryRescue(cand.cell, present, pieceIdGrid, pieces, rand, cols, rows)) {
+        if (tryRescue(cand.cell, present, pieceIdGrid, pieces, rand, cols, rows, spiralsProcessed ? null : reserved)) {
           resolvedAny = true;
           continue;
         }

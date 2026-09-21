@@ -19,28 +19,31 @@ const EXIT_TRANSITION = "transform 380ms cubic-bezier(0.4, 0, 1, 1)";
 
 const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180, left: 270 };
 /** Solid filled arrow cap. Its apex reaches almost to the cell's true outer
- * edge (matching the tail-extension in buildPiecePath below) and its base
- * width roughly matches LINE_WIDTH so it blends into the pipe with no neck,
- * sitting exactly at the cell center so it meets the line's own end with no
- * gap or visible seam. */
-const ARROW_PATH = "M0 -0.46 L0.4 0 L-0.4 0 Z";
-const ARROW_HALO_PATH = "M0 -0.52 L0.46 0.03 L-0.46 0.03 Z";
+ * edge (matching the tail-extension in buildPiecePath below) and it flares
+ * noticeably wider than the line so the arrowhead still reads clearly at
+ * this thinner stroke, with its base at the cell center so it meets the
+ * line's own end with no gap or visible seam. */
+const ARROW_PATH = "M0 -0.44 L0.26 -0.04 L-0.26 -0.04 Z";
+const ARROW_HALO_PATH = "M0 -0.5 L0.32 -0.01 L-0.32 -0.01 Z";
 /**
- * Pieces fill almost the entire cell so the whole board reads as one
- * tightly-packed maze (the puzzle is already a full tiling — every cell
- * belongs to some piece — this is what makes that visible). Only a hairline
- * of background peeks through between two different pieces' pipes, which
- * doubles as the border between them.
+ * A slim line with a generous channel of background on either side, so the
+ * board reads as a drawn maze of routed pipes rather than a block of
+ * colour — every cell still belongs to some piece (the puzzle is a full
+ * tiling), the runs are just drawn thin.
  */
-const LINE_WIDTH = 0.88;
-const HALO_WIDTH = 0.98;
+const LINE_WIDTH = 0.22;
+const HALO_WIDTH = 0.34;
+/** Radius of the smooth quarter-turn drawn at each bend. At this stroke
+ * width a plain mitred/round join reads as a hard corner, so bends are
+ * curved explicitly. */
+const CORNER_RADIUS = 0.34;
 /** How far past a cell's center the piece's TAIL end (the non-arrow end)
- * extends, so a butt-capped stroke reaches that cell's true outer edge
- * instead of stopping half a cell short at the center. */
-const TAIL_EXTEND = 0.5;
+ * extends, so its round cap lands just inside that cell's outer edge
+ * instead of stopping halfway back at the center. */
+const TAIL_EXTEND = 0.34;
 /** Fallback fill for the rare 1-cell piece (no line to stroke at all). */
-const SINGLE_CELL_FILL = 0.92;
-const SINGLE_CELL_HALO_FILL = 1.0;
+const SINGLE_CELL_FILL = 0.24;
+const SINGLE_CELL_HALO_FILL = 0.36;
 /** Fixed amber/gold, independent of theme — same role as the always-red danger flash. */
 const HINT_COLOR = "#e0983d";
 
@@ -54,13 +57,13 @@ function sameCell(a: Coord, b: Coord): boolean {
 }
 
 /**
- * A piece's line as a straight-segment SVG path through its cells' centers
- * (bends are left to `strokeLinejoin="round"`, which — at this stroke width
- * — reads as a properly rounded pipe elbow filling most of the bend cell).
- * The end AWAY from the arrowhead is extended by TAIL_EXTEND so a
- * butt-capped stroke reaches that cell's true outer edge rather than
- * stopping at its center; the head end stays at the center, since the
- * arrowhead triangle drawn on top covers the remaining reach to the edge.
+ * A piece's line through its cells' centers, with each bend drawn as a
+ * smooth quarter-turn (quadratic curve cutting the corner by
+ * CORNER_RADIUS) rather than a hard right angle. The end AWAY from the
+ * arrowhead is extended by TAIL_EXTEND so its round cap lands just inside
+ * that cell's outer edge rather than stopping at its center; the head end
+ * stays at the center, where the arrowhead triangle drawn on top takes
+ * over.
  */
 function buildPiecePath(piece: Piece, headCell: Coord): string {
   const pts = piece.cells.map((c) => ({ x: c.col + 0.5, y: c.row + 0.5 }));
@@ -72,7 +75,26 @@ function buildPiecePath(piece: Piece, headCell: Coord): string {
   const dir = normalize(pts[tailIdx].x - pts[neighborIdx].x, pts[tailIdx].y - pts[neighborIdx].y);
   pts[tailIdx] = { x: pts[tailIdx].x + dir.x * TAIL_EXTEND, y: pts[tailIdx].y + dir.y * TAIL_EXTEND };
 
-  return pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
+  if (pts.length === 2) return `M${pts[0].x} ${pts[0].y} L${pts[1].x} ${pts[1].y}`;
+
+  let d = `M${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const prev = pts[i - 1];
+    const cur = pts[i];
+    const next = pts[i + 1];
+    const toPrev = normalize(prev.x - cur.x, prev.y - cur.y);
+    const toNext = normalize(next.x - cur.x, next.y - cur.y);
+    // Never cut back further than half a segment, or consecutive bends
+    // one cell apart would overshoot into each other.
+    const rIn = Math.min(CORNER_RADIUS, Math.hypot(prev.x - cur.x, prev.y - cur.y) / 2);
+    const rOut = Math.min(CORNER_RADIUS, Math.hypot(next.x - cur.x, next.y - cur.y) / 2);
+    const a = { x: cur.x + toPrev.x * rIn, y: cur.y + toPrev.y * rIn };
+    const b = { x: cur.x + toNext.x * rOut, y: cur.y + toNext.y * rOut };
+    d += ` L${a.x} ${a.y} Q${cur.x} ${cur.y} ${b.x} ${b.y}`;
+  }
+  const last = pts[pts.length - 1];
+  d += ` L${last.x} ${last.y}`;
+  return d;
 }
 
 /**
@@ -161,7 +183,7 @@ export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintP
               style={exitDir ? EXIT_TRANSITION_STYLE : { opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
             >
               {path ? (
-                <path d={path} fill="none" stroke="var(--maze)" strokeWidth={HALO_WIDTH} strokeLinecap="butt" strokeLinejoin="round" />
+                <path d={path} fill="none" stroke="var(--maze)" strokeWidth={HALO_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
               ) : (
                 <rect
                   x={head.col + (1 - SINGLE_CELL_HALO_FILL) / 2}
@@ -201,7 +223,7 @@ export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintP
               style={exitDir ? EXIT_TRANSITION_STYLE : { opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
             >
               {path ? (
-                <path d={path} fill="none" stroke={color} strokeWidth={LINE_WIDTH} strokeLinecap="butt" strokeLinejoin="round" />
+                <path d={path} fill="none" stroke={color} strokeWidth={LINE_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
               ) : (
                 <rect
                   x={head.col + (1 - SINGLE_CELL_FILL) / 2}

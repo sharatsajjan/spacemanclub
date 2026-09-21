@@ -12,13 +12,13 @@ const CYCLE_LEN = 5;
 const TIERS: DifficultyTier[] = ["Easy", "Medium", "Medium", "Hard", "Hardest"];
 const TIER_BONUS = [0, 1, 1, 2, 3];
 /**
- * The board size itself is hard-capped at 12x18 (216 cells) by gridForLevel
- * below, once targetCells reaches ~216 (scale ~24) — that's the real
+ * The board size itself is hard-capped at 14x21 (294 cells) by gridForLevel
+ * below, once targetCells reaches ~294 (scale ~33) — that's the real
  * ceiling, not this constant. MAX_SCALE just needs to sit safely above it so
  * the scale formula's own clamp never kicks in earlier than the board-size
  * clamp already does.
  */
-const MAX_SCALE = 26;
+const MAX_SCALE = 35;
 
 /**
  * The first `RAMP_LEVELS` levels ease in from a tiny board (a handful of
@@ -59,8 +59,8 @@ export function gridForLevel(level: number): { cols: number; rows: number } {
   const targetCells = Math.max(6, Math.round(scale * 9));
   const minCols = level < RAMP_LEVELS ? 2 : 5;
   const minRows = level < RAMP_LEVELS ? 2 : 6;
-  const cols = Math.max(minCols, Math.min(12, Math.round(Math.sqrt(targetCells * 0.72))));
-  const rows = Math.max(minRows, Math.min(18, Math.round(targetCells / cols)));
+  const cols = Math.max(minCols, Math.min(14, Math.round(Math.sqrt(targetCells * 0.72))));
+  const rows = Math.max(minRows, Math.min(21, Math.round(targetCells / cols)));
   return { cols, rows };
 }
 
