@@ -16,11 +16,11 @@ const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180,
 /** Solid filled arrow cap, flared wider than the line so it reads as a clear
  * arrowhead, with its base sitting exactly at the cell center so it meets
  * the line's own (round-capped) end with no gap or visible seam. */
-const ARROW_PATH = "M0 -0.44 L0.26 0 L-0.26 0 Z";
-const ARROW_HALO_PATH = "M0 -0.5 L0.32 0.04 L-0.32 0.04 Z";
-const LINE_WIDTH = 0.34;
-const HALO_WIDTH = 0.46;
-const CORNER_RADIUS = 0.26;
+const ARROW_PATH = "M0 -0.28 L0.16 0 L-0.16 0 Z";
+const ARROW_HALO_PATH = "M0 -0.34 L0.22 0.03 L-0.22 0.03 Z";
+const LINE_WIDTH = 0.2;
+const HALO_WIDTH = 0.32;
+const CORNER_RADIUS = 0.18;
 /** Fixed amber/gold, independent of theme — same role as the always-red danger flash. */
 const HINT_COLOR = "#e0983d";
 
