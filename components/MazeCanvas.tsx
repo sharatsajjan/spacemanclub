@@ -98,31 +98,10 @@ export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: M
         viewBox={`0 0 ${cols} ${rows}`}
         preserveAspectRatio="none"
       >
-        {/* Pass 1: every piece's background-colored halo, drawn first so no
-            halo can ever paint over another piece's already-drawn line —
-            this is what keeps touching pieces visually distinct as separate
-            tappable units without resorting to per-piece color. */}
-        {pieces.map((piece) => {
-          const head = headCellOf(piece);
-          const isPresent = present[head.row][head.col];
-          const path = buildRoundedPath(piece.cells);
-          const rotation = ARROW_ROTATION[piece.direction];
-          const dots = piece.cells.filter((cell) => cell.row !== head.row || cell.col !== head.col);
-
-          return (
-            <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
-              {path && <path d={path} fill="none" stroke="var(--maze)" strokeWidth={0.32} strokeLinecap="round" strokeLinejoin="round" />}
-              {dots.map((cell, i) => (
-                <circle key={i} cx={cell.col + 0.5} cy={cell.row + 0.5} r={0.21} fill="var(--maze)" />
-              ))}
-              <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
-                <path d={CHEVRON_PATH} fill="none" stroke="var(--maze)" strokeWidth={0.32} strokeLinecap="round" strokeLinejoin="round" />
-              </g>
-            </g>
-          );
-        })}
-
-        {/* Pass 2: every piece's actual line, dots and arrowhead, on top of all halos. */}
+        {/* Every piece's line, dots and arrowhead. No background halo/gap between
+            pieces — now that each arrow always continues its own line's real
+            direction, adjacent pieces can flow together seamlessly like the
+            reference, without reading as one wrongly-connected line. */}
         {pieces.map((piece) => {
           const head = headCellOf(piece);
           const isPresent = present[head.row][head.col];
