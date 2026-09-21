@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Direction, Puzzle } from "@/lib/types";
 import { pieceCanExit } from "@/lib/rules";
 import { maxHintsForLevel } from "@/lib/difficultyWave";
+import { hapticHint, hapticMistake, hapticSuccess } from "@/lib/haptics";
 
 interface UseMazeGameOptions {
   puzzle: Puzzle;
@@ -82,6 +83,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       for (const cell of piece.cells) next[cell.row][cell.col] = false;
       setPresent(next);
       setHintPieceId((h) => (h === id ? null : h));
+      hapticSuccess();
 
       setExitingPieces((prev) => {
         const nextMap = new Map(prev);
@@ -129,6 +131,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       } else {
         setMistakes((m) => m + 1);
         triggerFlash(id);
+        hapticMistake();
         onMistake();
       }
     },
@@ -146,6 +149,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     const pick = clearable[Math.floor(Math.random() * clearable.length)];
     setHintsUsed((h) => h + 1);
     setHintPieceId(pick.id);
+    hapticHint();
   }, [present, pieceIdGrid, puzzle.pieces, puzzle.cols, puzzle.rows, hintsUsed, maxHints]);
 
   return {

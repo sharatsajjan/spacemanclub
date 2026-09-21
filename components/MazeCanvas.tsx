@@ -18,14 +18,29 @@ interface MazeCanvasProps {
 const EXIT_TRANSITION = "transform 380ms cubic-bezier(0.4, 0, 1, 1)";
 
 const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180, left: 270 };
-/** Solid filled arrow cap, flared wider than the line so it reads as a clear
- * arrowhead, with its base sitting exactly at the cell center so it meets
- * the line's own (round-capped) end with no gap or visible seam. */
-const ARROW_PATH = "M0 -0.28 L0.16 0 L-0.16 0 Z";
-const ARROW_HALO_PATH = "M0 -0.34 L0.22 0.03 L-0.22 0.03 Z";
-const LINE_WIDTH = 0.2;
-const HALO_WIDTH = 0.32;
-const CORNER_RADIUS = 0.18;
+/** Solid filled arrow cap. Its apex reaches almost to the cell's true outer
+ * edge (matching the tail-extension in buildPiecePath below) and its base
+ * width roughly matches LINE_WIDTH so it blends into the pipe with no neck,
+ * sitting exactly at the cell center so it meets the line's own end with no
+ * gap or visible seam. */
+const ARROW_PATH = "M0 -0.46 L0.4 0 L-0.4 0 Z";
+const ARROW_HALO_PATH = "M0 -0.52 L0.46 0.03 L-0.46 0.03 Z";
+/**
+ * Pieces fill almost the entire cell so the whole board reads as one
+ * tightly-packed maze (the puzzle is already a full tiling — every cell
+ * belongs to some piece — this is what makes that visible). Only a hairline
+ * of background peeks through between two different pieces' pipes, which
+ * doubles as the border between them.
+ */
+const LINE_WIDTH = 0.88;
+const HALO_WIDTH = 0.98;
+/** How far past a cell's center the piece's TAIL end (the non-arrow end)
+ * extends, so a butt-capped stroke reaches that cell's true outer edge
+ * instead of stopping half a cell short at the center. */
+const TAIL_EXTEND = 0.5;
+/** Fallback fill for the rare 1-cell piece (no line to stroke at all). */
+const SINGLE_CELL_FILL = 0.92;
+const SINGLE_CELL_HALO_FILL = 1.0;
 /** Fixed amber/gold, independent of theme — same role as the always-red danger flash. */
 const HINT_COLOR = "#e0983d";
 
@@ -34,26 +49,30 @@ function normalize(dx: number, dy: number) {
   return { x: dx / len, y: dy / len };
 }
 
-/** A piece's line as an SVG path with smoothly rounded corners instead of sharp right angles. */
-function buildRoundedPath(cells: Coord[]): string {
-  const pts = cells.map((c) => ({ x: c.col + 0.5, y: c.row + 0.5 }));
-  if (pts.length < 2) return "";
-  if (pts.length === 2) return `M${pts[0].x} ${pts[0].y} L${pts[1].x} ${pts[1].y}`;
+function sameCell(a: Coord, b: Coord): boolean {
+  return a.row === b.row && a.col === b.col;
+}
 
-  let d = `M${pts[0].x} ${pts[0].y}`;
-  for (let i = 1; i < pts.length - 1; i++) {
-    const prev = pts[i - 1];
-    const cur = pts[i];
-    const next = pts[i + 1];
-    const toPrev = normalize(prev.x - cur.x, prev.y - cur.y);
-    const toNext = normalize(next.x - cur.x, next.y - cur.y);
-    const a = { x: cur.x + toPrev.x * CORNER_RADIUS, y: cur.y + toPrev.y * CORNER_RADIUS };
-    const b = { x: cur.x + toNext.x * CORNER_RADIUS, y: cur.y + toNext.y * CORNER_RADIUS };
-    d += ` L${a.x} ${a.y} Q${cur.x} ${cur.y} ${b.x} ${b.y}`;
-  }
-  const last = pts[pts.length - 1];
-  d += ` L${last.x} ${last.y}`;
-  return d;
+/**
+ * A piece's line as a straight-segment SVG path through its cells' centers
+ * (bends are left to `strokeLinejoin="round"`, which — at this stroke width
+ * — reads as a properly rounded pipe elbow filling most of the bend cell).
+ * The end AWAY from the arrowhead is extended by TAIL_EXTEND so a
+ * butt-capped stroke reaches that cell's true outer edge rather than
+ * stopping at its center; the head end stays at the center, since the
+ * arrowhead triangle drawn on top covers the remaining reach to the edge.
+ */
+function buildPiecePath(piece: Piece, headCell: Coord): string {
+  const pts = piece.cells.map((c) => ({ x: c.col + 0.5, y: c.row + 0.5 }));
+  if (pts.length < 2) return "";
+
+  const headIsFirst = sameCell(piece.cells[0], headCell);
+  const tailIdx = headIsFirst ? pts.length - 1 : 0;
+  const neighborIdx = headIsFirst ? pts.length - 2 : 1;
+  const dir = normalize(pts[tailIdx].x - pts[neighborIdx].x, pts[tailIdx].y - pts[neighborIdx].y);
+  pts[tailIdx] = { x: pts[tailIdx].x + dir.x * TAIL_EXTEND, y: pts[tailIdx].y + dir.y * TAIL_EXTEND };
+
+  return pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ");
 }
 
 /**
@@ -132,7 +151,7 @@ export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintP
           const isPresent = present[head.row][head.col];
           const exitDir = exitingPieces.get(piece.id);
           if (!isPresent && !exitDir) return null;
-          const path = buildRoundedPath(piece.cells);
+          const path = buildPiecePath(piece, head);
           const rotation = ARROW_ROTATION[piece.direction];
 
           return (
@@ -141,7 +160,18 @@ export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintP
               transform={exitDir ? slideTransform(cols, rows, exitDir) : undefined}
               style={exitDir ? EXIT_TRANSITION_STYLE : { opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
             >
-              {path && <path d={path} fill="none" stroke="var(--maze)" strokeWidth={HALO_WIDTH} strokeLinecap="round" strokeLinejoin="round" />}
+              {path ? (
+                <path d={path} fill="none" stroke="var(--maze)" strokeWidth={HALO_WIDTH} strokeLinecap="butt" strokeLinejoin="round" />
+              ) : (
+                <rect
+                  x={head.col + (1 - SINGLE_CELL_HALO_FILL) / 2}
+                  y={head.row + (1 - SINGLE_CELL_HALO_FILL) / 2}
+                  width={SINGLE_CELL_HALO_FILL}
+                  height={SINGLE_CELL_HALO_FILL}
+                  rx={0.14}
+                  fill="var(--maze)"
+                />
+              )}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
                 <path d={ARROW_HALO_PATH} fill="var(--maze)" />
               </g>
@@ -160,7 +190,7 @@ export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintP
           const isFlashing = flashPieceId === piece.id;
           const isHinted = hintPieceId === piece.id;
           const color = isFlashing ? "var(--danger)" : isHinted ? HINT_COLOR : "var(--line)";
-          const path = buildRoundedPath(piece.cells);
+          const path = buildPiecePath(piece, head);
           const rotation = ARROW_ROTATION[piece.direction];
 
           return (
@@ -170,7 +200,18 @@ export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintP
               transform={exitDir ? slideTransform(cols, rows, exitDir) : undefined}
               style={exitDir ? EXIT_TRANSITION_STYLE : { opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
             >
-              {path && <path d={path} fill="none" stroke={color} strokeWidth={LINE_WIDTH} strokeLinecap="round" strokeLinejoin="round" />}
+              {path ? (
+                <path d={path} fill="none" stroke={color} strokeWidth={LINE_WIDTH} strokeLinecap="butt" strokeLinejoin="round" />
+              ) : (
+                <rect
+                  x={head.col + (1 - SINGLE_CELL_FILL) / 2}
+                  y={head.row + (1 - SINGLE_CELL_FILL) / 2}
+                  width={SINGLE_CELL_FILL}
+                  height={SINGLE_CELL_FILL}
+                  rx={0.12}
+                  fill={color}
+                />
+              )}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
                 <path d={ARROW_PATH} fill={color} />
               </g>
