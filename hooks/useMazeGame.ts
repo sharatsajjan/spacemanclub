@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Coord, Puzzle } from "@/lib/types";
-import { isLineComplete, lineStepKind, sameCoord } from "@/lib/rules";
+import { pathClear } from "@/lib/rules";
 import { maxHintsForLevel } from "@/lib/difficultyWave";
 
 interface UseMazeGameOptions {
@@ -11,137 +11,103 @@ interface UseMazeGameOptions {
   onAllComplete: () => void;
 }
 
+function makePresentGrid(cols: number, rows: number): boolean[][] {
+  return Array.from({ length: rows }, () => new Array(cols).fill(true));
+}
+
 export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOptions) {
-  const [progress, setProgress] = useState<number[]>(() => puzzle.lines.map(() => 0));
-  const [activeLineId, setActiveLineId] = useState<number | null>(null);
-  const [flashLineId, setFlashLineId] = useState<number | null>(null);
+  const [present, setPresent] = useState<boolean[][]>(() => makePresentGrid(puzzle.cols, puzzle.rows));
+  const [flashCell, setFlashCell] = useState<Coord | null>(null);
   const [mistakes, setMistakes] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finishedRef = useRef(false);
 
+  const maxHints = useMemo(() => maxHintsForLevel(puzzle.level), [puzzle.level]);
+  const totalPieces = puzzle.cols * puzzle.rows;
+  const clearedCount = useMemo(
+    () => present.reduce((sum, row) => sum + row.filter((p) => !p).length, 0),
+    [present]
+  );
+
   useEffect(() => {
-    setProgress(puzzle.lines.map(() => 0));
-    setActiveLineId(null);
-    setFlashLineId(null);
+    setPresent(makePresentGrid(puzzle.cols, puzzle.rows));
+    setFlashCell(null);
     setMistakes(0);
     setHintsUsed(0);
     finishedRef.current = false;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [puzzle.id]);
+  }, [puzzle.id, puzzle.cols, puzzle.rows]);
 
-  const maxHints = useMemo(() => maxHintsForLevel(puzzle.level), [puzzle.level]);
-  const completedCount = useMemo(
-    () => puzzle.lines.filter((l) => isLineComplete(l, progress[l.id])).length,
-    [puzzle.lines, progress]
-  );
-
-  const triggerFlash = useCallback((lineId: number) => {
-    setFlashLineId(lineId);
-    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
-    flashTimeoutRef.current = setTimeout(() => setFlashLineId(null), 350);
+  useEffect(() => {
+    return () => {
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    };
   }, []);
 
-  const startDrag = useCallback(
-    (coord: Coord) => {
+  const triggerFlash = useCallback((coord: Coord) => {
+    setFlashCell(coord);
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    flashTimeoutRef.current = setTimeout(() => setFlashCell(null), 350);
+  }, []);
+
+  const tapCell = useCallback(
+    (row: number, col: number) => {
       if (finishedRef.current) return;
-      const line = puzzle.lines.find((l) => {
-        const p = progress[l.id];
-        if (isLineComplete(l, p)) return false;
-        return sameCoord(l.path[p], coord);
-      });
-      if (line) setActiveLineId(line.id);
-    },
-    [puzzle.lines, progress]
-  );
+      if (!present[row][col]) return; // already cleared, no-op
 
-  const enterCell = useCallback(
-    (coord: Coord) => {
-      if (activeLineId === null || finishedRef.current) return;
-      const line = puzzle.lines[activeLineId];
-      const p = progress[activeLineId];
-      const kind = lineStepKind(line, p, coord);
+      const dir = puzzle.directions[row][col];
+      const clear = pathClear(present, puzzle.cols, puzzle.rows, row, col, dir);
 
-      if (kind === "advance") {
-        const nextProgress = p + 1;
-        setProgress((prev) => {
-          const copy = prev.slice();
-          copy[activeLineId] = nextProgress;
-          return copy;
-        });
-        if (isLineComplete(line, nextProgress)) {
-          setActiveLineId(null);
-          const allDone = puzzle.lines.every((l, idx) =>
-            idx === activeLineId ? true : isLineComplete(l, progress[idx])
-          );
-          if (allDone) {
-            finishedRef.current = true;
-            onAllComplete();
-          }
+      if (clear) {
+        const next = present.map((r) => r.slice());
+        next[row][col] = false;
+        setPresent(next);
+        const remaining = next.reduce((sum, r) => sum + r.filter((p) => p).length, 0);
+        if (remaining === 0) {
+          finishedRef.current = true;
+          onAllComplete();
         }
-      } else if (kind === "retreat") {
-        setProgress((prev) => {
-          const copy = prev.slice();
-          copy[activeLineId] = Math.max(0, p - 1);
-          return copy;
-        });
       } else {
         setMistakes((m) => m + 1);
-        triggerFlash(activeLineId);
-        setProgress((prev) => {
-          const copy = prev.slice();
-          copy[activeLineId] = 0;
-          return copy;
-        });
-        setActiveLineId(null);
+        triggerFlash({ row, col });
         onMistake();
       }
     },
-    [activeLineId, progress, puzzle.lines, onMistake, onAllComplete, triggerFlash]
+    [present, puzzle, onMistake, onAllComplete, triggerFlash]
   );
-
-  const endDrag = useCallback(() => {
-    setActiveLineId(null);
-  }, []);
 
   const requestHint = useCallback(() => {
     if (finishedRef.current || hintsUsed >= maxHints) return;
-    const targetId =
-      activeLineId !== null && !isLineComplete(puzzle.lines[activeLineId], progress[activeLineId])
-        ? activeLineId
-        : puzzle.lines.find((l) => !isLineComplete(l, progress[l.id]))?.id;
-    if (targetId === undefined) return;
-
-    const line = puzzle.lines[targetId];
-    const p = progress[targetId];
-    const nextProgress = p + 1;
-    setProgress((prev) => {
-      const copy = prev.slice();
-      copy[targetId] = nextProgress;
-      return copy;
-    });
-    setHintsUsed((h) => h + 1);
-    if (isLineComplete(line, nextProgress)) {
-      const allDone = puzzle.lines.every((l, idx) => (idx === targetId ? true : isLineComplete(l, progress[idx])));
-      if (allDone) {
-        finishedRef.current = true;
-        onAllComplete();
+    const clearable: Coord[] = [];
+    for (let r = 0; r < puzzle.rows; r++) {
+      for (let c = 0; c < puzzle.cols; c++) {
+        if (present[r][c] && pathClear(present, puzzle.cols, puzzle.rows, r, c, puzzle.directions[r][c])) {
+          clearable.push({ row: r, col: c });
+        }
       }
     }
-  }, [activeLineId, hintsUsed, maxHints, progress, puzzle.lines, onAllComplete]);
+    if (clearable.length === 0) return;
+    const pick = clearable[Math.floor(Math.random() * clearable.length)];
+    const next = present.map((r) => r.slice());
+    next[pick.row][pick.col] = false;
+    setPresent(next);
+    setHintsUsed((h) => h + 1);
+    const remaining = next.reduce((sum, r) => sum + r.filter((p) => p).length, 0);
+    if (remaining === 0) {
+      finishedRef.current = true;
+      onAllComplete();
+    }
+  }, [present, puzzle, hintsUsed, maxHints, onAllComplete]);
 
   return {
-    progress,
-    activeLineId,
-    flashLineId,
+    present,
+    flashCell,
     mistakes,
     hintsUsed,
     maxHints,
-    completedCount,
-    totalLines: puzzle.lines.length,
-    startDrag,
-    enterCell,
-    endDrag,
+    clearedCount,
+    totalPieces,
+    tapCell,
     requestHint,
   };
 }

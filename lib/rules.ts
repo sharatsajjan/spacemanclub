@@ -1,4 +1,4 @@
-import { Coord, Direction, MazeLine } from "./types";
+import { Coord, Direction } from "./types";
 
 export const DIRECTIONS: Direction[] = ["up", "down", "left", "right"];
 
@@ -15,14 +15,6 @@ export function delta(dir: Direction): Coord {
   }
 }
 
-export function directionBetween(a: Coord, b: Coord): Direction | null {
-  if (b.row === a.row - 1 && b.col === a.col) return "up";
-  if (b.row === a.row + 1 && b.col === a.col) return "down";
-  if (b.row === a.row && b.col === a.col - 1) return "left";
-  if (b.row === a.row && b.col === a.col + 1) return "right";
-  return null;
-}
-
 export function sameCoord(a: Coord, b: Coord): boolean {
   return a.row === b.row && a.col === b.col;
 }
@@ -31,31 +23,31 @@ export function inBounds(cols: number, rows: number, c: Coord): boolean {
   return c.row >= 0 && c.row < rows && c.col >= 0 && c.col < cols;
 }
 
-export function neighbors(cols: number, rows: number, c: Coord): Coord[] {
-  return DIRECTIONS.map((d) => {
-    const dd = delta(d);
-    return { row: c.row + dd.row, col: c.col + dd.col };
-  }).filter((n) => inBounds(cols, rows, n));
-}
-
 /**
- * A line's path is fixed by the puzzle (no branching choice) — legality of a
- * drag step is just "does the next cell match the next/previous step in this
- * exact line's path". `progress` is the index into `line.path` the player
- * has currently traced up to (0 = only the start dot is placed).
+ * Whether the piece at (row, col) can clear right now: walking from it in
+ * `dir` must reach the board edge without passing through any other cell
+ * that's still marked `present` (not yet cleared).
  */
-export function lineStepKind(
-  line: MazeLine,
-  progress: number,
-  candidate: Coord
-): "advance" | "retreat" | "wrong" {
-  const next = line.path[progress + 1];
-  if (next && sameCoord(next, candidate)) return "advance";
-  const prev = line.path[progress - 1];
-  if (prev && sameCoord(prev, candidate)) return "retreat";
-  return "wrong";
+export function pathClear(
+  present: boolean[][],
+  cols: number,
+  rows: number,
+  row: number,
+  col: number,
+  dir: Direction
+): boolean {
+  const d = delta(dir);
+  let r = row + d.row;
+  let c = col + d.col;
+  while (r >= 0 && r < rows && c >= 0 && c < cols) {
+    if (present[r][c]) return false;
+    r += d.row;
+    c += d.col;
+  }
+  return true;
 }
 
-export function isLineComplete(line: MazeLine, progress: number): boolean {
-  return progress >= line.path.length - 1;
+/** The ring index of a cell: 0 = outer border, increasing toward the center. */
+export function ringOf(row: number, col: number, cols: number, rows: number): number {
+  return Math.min(row, rows - 1 - row, col, cols - 1 - col);
 }

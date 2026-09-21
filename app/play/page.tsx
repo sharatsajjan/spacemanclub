@@ -3,15 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayerProfile } from "@/hooks/usePlayerProfile";
-import { useMazeGame } from "@/hooks/useMazeGame";
 import { generatePuzzleForLevel } from "@/lib/mazeGenerator";
-import { computeLevelScore } from "@/lib/scoring";
 import { applyLevelResult, grantLifeFromAd, loseLife } from "@/lib/storage";
 import { LevelResult, Puzzle } from "@/lib/types";
 import { ThemeStyle } from "@/components/ThemeStyle";
-import { MazeCanvas } from "@/components/MazeCanvas";
-import { LivesRow } from "@/components/LivesRow";
-import { PaletteIcon, SettingsIcon, LightbulbIcon, TrophyIcon, StarIcon, WaterDropIcon } from "@/components/icons";
+import { MazeGameView } from "@/components/MazeGameView";
+import { PaletteIcon, SettingsIcon, TrophyIcon, StarIcon, WaterDropIcon } from "@/components/icons";
 
 type Phase = "loading" | "playing" | "complete" | "outOfLives";
 
@@ -27,7 +24,6 @@ export default function PlayPage() {
   const { profile, hydrated, setProfile } = usePlayerProfile();
   const [phase, setPhase] = useState<Phase>("loading");
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
-  const [startedAt, setStartedAt] = useState(0);
   const [result, setResult] = useState<LevelResult | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -35,7 +31,6 @@ export default function PlayPage() {
     if (!hydrated || puzzle) return;
     const seed = Math.floor(Math.random() * 1_000_000_000);
     setPuzzle(generatePuzzleForLevel(profile.currentLevel, seed));
-    setStartedAt(Date.now());
     setPhase(profile.lives > 0 ? "playing" : "outOfLives");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
@@ -55,34 +50,14 @@ export default function PlayPage() {
     if (next.lives <= 0) setPhase("outOfLives");
   }, [profile, setProfile]);
 
-  const handleAllComplete = useCallback(() => {
-    if (!puzzle) return;
-    const { stars, coinsEarned } = computeLevelScore({
-      tier: puzzle.tier,
-      mistakes: game.mistakes,
-      hintsUsed: game.hintsUsed,
-      lineCount: puzzle.lines.length,
-    });
-    const levelResult: LevelResult = {
-      level: puzzle.level,
-      completed: true,
-      mistakes: game.mistakes,
-      hintsUsed: game.hintsUsed,
-      elapsedMs: Date.now() - startedAt,
-      stars,
-      coinsEarned,
-    };
-    setResult(levelResult);
-    setProfile((p) => applyLevelResult(p, levelResult).profile);
-    setPhase("complete");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [puzzle, startedAt]);
-
-  const game = useMazeGame({
-    puzzle: puzzle ?? { id: "empty", level: 1, cols: 1, rows: 1, lines: [], tier: "Easy", seed: 0 },
-    onMistake: handleMistake,
-    onAllComplete: handleAllComplete,
-  });
+  const handleComplete = useCallback(
+    (levelResult: LevelResult) => {
+      setResult(levelResult);
+      setProfile((p) => applyLevelResult(p, levelResult).profile);
+      setPhase("complete");
+    },
+    [setProfile]
+  );
 
   if (!hydrated || !puzzle) {
     return (
@@ -98,7 +73,6 @@ export default function PlayPage() {
   const startNextLevel = () => {
     const seed = Math.floor(Math.random() * 1_000_000_000);
     setPuzzle(generatePuzzleForLevel(profile.currentLevel, seed));
-    setStartedAt(Date.now());
     setResult(null);
     setPhase(profile.lives > 0 ? "playing" : "outOfLives");
   };
@@ -131,32 +105,13 @@ export default function PlayPage() {
           </div>
 
           {phase === "playing" && (
-            <>
-              <div className="flex items-center justify-between mb-3">
-                <LivesRow lives={profile.lives} />
-                <button
-                  onClick={game.requestHint}
-                  disabled={game.hintsUsed >= game.maxHints}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-40 bg-chip text-accent"
-                >
-                  <LightbulbIcon className="w-3.5 h-3.5" />
-                  Hint ({game.maxHints - game.hintsUsed})
-                </button>
-              </div>
-              <MazeCanvas
-                puzzle={puzzle}
-                progress={game.progress}
-                activeLineId={game.activeLineId}
-                flashLineId={game.flashLineId}
-                onDragStart={game.startDrag}
-                onCellEnter={game.enterCell}
-                onDragEnd={game.endDrag}
-              />
-              <p className="text-center text-[11px] text-sub2 mt-3">
-                {game.completedCount}/{game.totalLines} lines cleared &mdash; drag from a dot&apos;s arrow to its
-                matching dot.
-              </p>
-            </>
+            <MazeGameView
+              key={puzzle.id}
+              puzzle={puzzle}
+              lives={profile.lives}
+              onMistake={handleMistake}
+              onComplete={handleComplete}
+            />
           )}
 
           {phase === "complete" && result && (

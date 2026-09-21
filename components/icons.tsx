@@ -7,12 +7,20 @@ const rotation: Record<Direction, number> = {
   left: 270,
 };
 
-export function ArrowIcon({ direction, className = "" }: { direction: Direction; className?: string }) {
+export function ArrowIcon({
+  direction,
+  className = "",
+  style,
+}: {
+  direction: Direction;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   return (
     <svg
       viewBox="0 0 24 24"
       className={className}
-      style={{ transform: `rotate(${rotation[direction]}deg)` }}
+      style={{ transform: `rotate(${rotation[direction]}deg)`, ...style }}
       fill="none"
     >
       <path

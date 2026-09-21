@@ -7,19 +7,17 @@ export interface Coord {
 
 export type DifficultyTier = "Easy" | "Medium" | "Hard" | "Hardest";
 
-/** One separate draggable line within a maze — an ordered path from its start dot to its end dot. */
-export interface MazeLine {
-  id: number;
-  /** Ordered cells from the start dot (index 0) to the end dot (last index). */
-  path: Coord[];
-}
-
+/**
+ * Every cell holds one arrow piece. Tapping a piece clears it (removes it
+ * from the board) only if its straight-line path in `directions[r][c]`, out
+ * to the board edge, is free of every other still-present piece.
+ */
 export interface Puzzle {
   id: string;
   level: number;
   cols: number;
   rows: number;
-  lines: MazeLine[];
+  directions: Direction[][];
   tier: DifficultyTier;
   seed: number;
 }
