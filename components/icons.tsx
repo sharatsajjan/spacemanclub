@@ -24,7 +24,7 @@ export function ArrowIcon({
       fill="none"
     >
       <path
-        d="M12 3L20 15H14V21H10V15H4L12 3Z"
+        d="M12 1.5L17 9H13.6V24H10.4V9H7L12 1.5Z"
         fill="currentColor"
       />
     </svg>

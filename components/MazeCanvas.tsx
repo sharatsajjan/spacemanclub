@@ -40,16 +40,12 @@ export function MazeCanvas({ puzzle, present, flashCell, disabled, onTap }: Maze
               data-dir={dir}
               data-present={isPresent}
               className="relative flex items-center justify-center transition-opacity duration-150"
-              style={{
-                opacity: isPresent ? 1 : 0,
-                borderRight: c < cols - 1 ? "1px solid var(--line-done)" : undefined,
-                borderBottom: r < rows - 1 ? "1px solid var(--line-done)" : undefined,
-              }}
+              style={{ opacity: isPresent ? 1 : 0 }}
             >
               {isFlashing && <span className="absolute inset-[6%] rounded-sm bg-danger/50" />}
               <ArrowIcon
                 direction={dir}
-                className="relative w-[62%] h-[62%]"
+                className="relative w-full h-full"
                 style={{ color: isFlashing ? "var(--danger)" : "var(--line)" }}
               />
             </button>
