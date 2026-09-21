@@ -1,108 +1,121 @@
 import { Coord, Direction, Piece, Puzzle } from "./types";
-import { mulberry32, shuffle } from "./rng";
-import { DIRECTIONS, pieceCanExit, ringOf } from "./rules";
+import { mulberry32 } from "./rng";
+import { DIRECTIONS, delta, pieceCanExit, ringOf } from "./rules";
 import { gridForLevel, tierForLevel } from "./difficultyWave";
 
 const MIN_PIECE_LEN = 1;
 const MAX_PIECE_LEN = 5;
-const CELL_DELTAS: [number, number][] = [
-  [-1, 0],
-  [1, 0],
-  [0, -1],
-  [0, 1],
-];
-
-interface RawPiece {
-  cells: Coord[];
-}
 
 /**
- * Tiles the whole board into small connected, bent paths (1-5 cells each) —
- * every cell belongs to exactly one piece, no gaps, no overlaps. Visits
- * cells in random order; each uncovered cell seeds a piece that random-walks
- * to adjacent uncovered cells until it hits its target length or a dead end.
- */
-function buildTiling(cols: number, rows: number, rand: () => number): { pieceIdGrid: number[][]; pieces: RawPiece[] } {
-  const pieceIdGrid: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
-  const allCells: Coord[] = [];
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) allCells.push({ row: r, col: c });
-  const order = shuffle(rand, allCells);
-
-  const pieces: RawPiece[] = [];
-  for (const start of order) {
-    if (pieceIdGrid[start.row][start.col] !== -1) continue;
-    const targetLen = MIN_PIECE_LEN + Math.floor(rand() * (MAX_PIECE_LEN - MIN_PIECE_LEN + 1));
-    const cells: Coord[] = [start];
-    const id = pieces.length;
-    pieceIdGrid[start.row][start.col] = id;
-    let cur = start;
-    while (cells.length < targetLen) {
-      const options = CELL_DELTAS.map(([dr, dc]) => ({ row: cur.row + dr, col: cur.col + dc })).filter(
-        (p) => p.row >= 0 && p.row < rows && p.col >= 0 && p.col < cols && pieceIdGrid[p.row][p.col] === -1
-      );
-      if (options.length === 0) break;
-      const next = options[Math.floor(rand() * options.length)];
-      pieceIdGrid[next.row][next.col] = id;
-      cells.push(next);
-      cur = next;
-    }
-    pieces.push({ cells });
-  }
-
-  return { pieceIdGrid, pieces };
-}
-
-/**
- * Assigns each piece a slide-out direction and produces a valid clearing
- * order, in two phases:
+ * Builds the whole board directly in clearing order — every piece is
+ * created already knowing it can exit right now, so no separate
+ * generate-then-solve pass is needed:
  *
- *  1. Adaptive random: repeatedly pick a random still-present piece that has
- *     >=1 direction where sweeping every one of its cells reaches the board
- *     edge clear of every OTHER present piece, and clear it. This is what
- *     gives boards real variety and order-dependent puzzles.
- *  2. Guaranteed fallback: if the random walk ever gets stuck (some pieces
- *     left with no clear direction), decompose just those into single-cell
- *     pieces and finish them in ascending ring order, each pointed toward
- *     its nearest edge — always valid, since the shortest path from any
- *     cell to its nearest edge only crosses strictly-smaller-ring cells,
- *     which are guaranteed already cleared by then. (Not observed to
- *     trigger in testing up to 12x18 boards, but kept as a safety net.)
+ *  1. Pick a random still-present cell that has >=1 direction where
+ *     sweeping just that cell reaches the board edge clear of every other
+ *     present piece — this becomes a new piece's head, with that direction
+ *     as its exit direction.
+ *  2. Grow a tail from the head. The FIRST extension is mandatory: exactly
+ *     the one cell directly behind the head, opposite the exit direction —
+ *     this is what makes the arrow read as a continuation of the piece's
+ *     own line (like the reference), not an arbitrary slide direction
+ *     unrelated to its shape. Every extension after that first one can bend
+ *     freely to any available neighbor, as long as the whole piece so far
+ *     still clears in the exit direction. A piece that can't take that
+ *     first mandatory step stays a single cell (still perfectly valid).
+ *  3. Repeat until no present cell has any valid direction left.
+ *  4. Guaranteed fallback: any leftover cells (not observed in testing up
+ *     to 12x18 boards, but kept as a safety net) become single-cell pieces
+ *     in ascending ring order, each pointed toward its nearest edge —
+ *     always valid, since the shortest path from any cell to its nearest
+ *     edge only crosses strictly-smaller-ring cells, already cleared by
+ *     construction.
  */
-function assignDirectionsAndOrder(
-  cols: number,
-  rows: number,
-  pieceIdGrid: number[][],
-  rawPieces: RawPiece[],
-  rand: () => number
-): Piece[] {
+function buildPieces(cols: number, rows: number, rand: () => number): Piece[] {
   const present: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(true));
-  const pieces: Piece[] = rawPieces.map((p, id) => ({ id, cells: p.cells, direction: "up" }));
-  let remaining = pieces.map((p) => p.id);
+  const pieceIdGrid: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
+  const pieces: Piece[] = [];
 
-  while (remaining.length > 0) {
-    const candidates: { id: number; dirs: Direction[] }[] = [];
-    for (const id of remaining) {
-      const dirs = DIRECTIONS.filter((dir) => pieceCanExit(present, pieceIdGrid, id, pieces[id].cells, cols, rows, dir));
-      if (dirs.length > 0) candidates.push({ id, dirs });
+  while (true) {
+    const candidates: { cell: Coord; dirs: Direction[] }[] = [];
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (!present[row][col]) continue;
+        const dirs = DIRECTIONS.filter((dir) => pieceCanExit(present, pieceIdGrid, -2, [{ row, col }], cols, rows, dir));
+        if (dirs.length > 0) candidates.push({ cell: { row, col }, dirs });
+      }
     }
     if (candidates.length === 0) break;
 
     const pick = candidates[Math.floor(rand() * candidates.length)];
-    const dir = pick.dirs[Math.floor(rand() * pick.dirs.length)];
-    pieces[pick.id].direction = dir;
-    for (const cell of pieces[pick.id].cells) present[cell.row][cell.col] = false;
-    remaining = remaining.filter((id) => id !== pick.id);
+    const direction = pick.dirs[Math.floor(rand() * pick.dirs.length)];
+    const id = pieces.length;
+    const cells: Coord[] = [pick.cell];
+    pieceIdGrid[pick.cell.row][pick.cell.col] = id;
+
+    const targetLen = MIN_PIECE_LEN + Math.floor(rand() * (MAX_PIECE_LEN - MIN_PIECE_LEN + 1));
+    let cur = pick.cell;
+    let grewPastHead = false;
+
+    if (targetLen >= 2) {
+      const d = delta(direction);
+      const mandatory: Coord = { row: pick.cell.row - d.row, col: pick.cell.col - d.col };
+      if (
+        mandatory.row >= 0 &&
+        mandatory.row < rows &&
+        mandatory.col >= 0 &&
+        mandatory.col < cols &&
+        present[mandatory.row][mandatory.col] &&
+        pieceIdGrid[mandatory.row][mandatory.col] === -1
+      ) {
+        pieceIdGrid[mandatory.row][mandatory.col] = id;
+        if (pieceCanExit(present, pieceIdGrid, id, [...cells, mandatory], cols, rows, direction)) {
+          cells.push(mandatory);
+          cur = mandatory;
+          grewPastHead = true;
+        } else {
+          pieceIdGrid[mandatory.row][mandatory.col] = -1;
+        }
+      }
+    }
+
+    // Without that mandatory first segment, any further growth would place
+    // an unconstrained direction right next to the head — exactly what this
+    // whole construction exists to avoid. So only keep bending once past it.
+    while (grewPastHead && cells.length < targetLen) {
+      const options = DIRECTIONS.map((dir) => delta(dir))
+        .map((d) => ({ row: cur.row + d.row, col: cur.col + d.col }))
+        .filter((c) => c.row >= 0 && c.row < rows && c.col >= 0 && c.col < cols && present[c.row][c.col] && pieceIdGrid[c.row][c.col] === -1);
+      const shuffledOptions = options
+        .map((c) => ({ c, k: rand() }))
+        .sort((a, b) => a.k - b.k)
+        .map(({ c }) => c);
+
+      let extended = false;
+      for (const candidate of shuffledOptions) {
+        pieceIdGrid[candidate.row][candidate.col] = id;
+        if (pieceCanExit(present, pieceIdGrid, id, [...cells, candidate], cols, rows, direction)) {
+          cells.push(candidate);
+          cur = candidate;
+          extended = true;
+          break;
+        } else {
+          pieceIdGrid[candidate.row][candidate.col] = -1;
+        }
+      }
+      if (!extended) break;
+    }
+
+    pieces.push({ id, cells, direction });
+    for (const cell of cells) present[cell.row][cell.col] = false;
   }
 
-  if (remaining.length > 0) {
-    let singleCells: Coord[] = [];
-    for (const id of remaining) singleCells.push(...pieces[id].cells);
-    singleCells = singleCells.sort((a, b) => ringOf(a.row, a.col, cols, rows) - ringOf(b.row, b.col, cols, rows));
-
-    for (const id of remaining) pieces[id].cells = [];
-
-    for (const cell of singleCells) {
-      const newId = pieces.length;
+  const leftover: Coord[] = [];
+  for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) if (present[row][col]) leftover.push({ row, col });
+  if (leftover.length > 0) {
+    leftover.sort((a, b) => ringOf(a.row, a.col, cols, rows) - ringOf(b.row, b.col, cols, rows));
+    for (const cell of leftover) {
+      const id = pieces.length;
       const distUp = cell.row;
       const distDown = rows - 1 - cell.row;
       const distLeft = cell.col;
@@ -113,20 +126,18 @@ function assignDirectionsAndOrder(
       if (distDown === min) tied.push("down");
       if (distLeft === min) tied.push("left");
       if (distRight === min) tied.push("right");
-      pieces.push({ id: newId, cells: [cell], direction: tied[Math.floor(rand() * tied.length)] });
-      pieceIdGrid[cell.row][cell.col] = newId;
+      pieces.push({ id, cells: [cell], direction: tied[Math.floor(rand() * tied.length)] });
       present[cell.row][cell.col] = false;
     }
   }
 
-  return pieces.filter((p) => p.cells.length > 0);
+  return pieces;
 }
 
 export function generatePuzzleForLevel(level: number, seed: number): Puzzle {
   const { cols, rows } = gridForLevel(level);
   const rand = mulberry32(seed);
-  const { pieceIdGrid, pieces: rawPieces } = buildTiling(cols, rows, rand);
-  const pieces = assignDirectionsAndOrder(cols, rows, pieceIdGrid, rawPieces, rand);
+  const pieces = buildPieces(cols, rows, rand);
 
   return {
     id: `level-${level}-${seed}`,
