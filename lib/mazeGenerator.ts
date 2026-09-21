@@ -32,10 +32,10 @@ interface Complexity {
  * more complex "Level 171 / Super Hard" should feel than "Level 21".
  */
 const COMPLEXITY_BY_TIER: Record<DifficultyTier, Complexity> = {
-  Easy: { minLen: 2, maxLen: 4, turnBias: 0.35, spiralCoverage: 0.2, spiralRegionCells: 6 },
-  Medium: { minLen: 2, maxLen: 5, turnBias: 0.6, spiralCoverage: 0.4, spiralRegionCells: 8 },
-  Hard: { minLen: 2, maxLen: 6, turnBias: 0.75, spiralCoverage: 0.55, spiralRegionCells: 9 },
-  Hardest: { minLen: 3, maxLen: 7, turnBias: 0.85, spiralCoverage: 0.65, spiralRegionCells: 10 },
+  Easy: { minLen: 2, maxLen: 5, turnBias: 0.35, spiralCoverage: 0.25, spiralRegionCells: 5 },
+  Medium: { minLen: 2, maxLen: 5, turnBias: 0.6, spiralCoverage: 0.45, spiralRegionCells: 5 },
+  Hard: { minLen: 2, maxLen: 4, turnBias: 0.75, spiralCoverage: 0.6, spiralRegionCells: 5 },
+  Hardest: { minLen: 2, maxLen: 4, turnBias: 0.85, spiralCoverage: 0.75, spiralRegionCells: 5 },
 };
 
 function directionBetween(from: Coord, to: Coord): Coord {
@@ -104,19 +104,6 @@ function spiralPathThroughRegion(top: number, left: number, h: number, w: number
   return path;
 }
 
-/**
- * Region shapes are deliberately varied, since the shape decides what the
- * spiral piece looks like: a 2-wide rectangle winds into a U, a 3-wide one
- * serpentines, and a squarer one coils into a nested spiral. Mixing them
- * keeps the board from repeating the same twist everywhere.
- */
-function regionDimsForCells(cells: number, rand: () => number): { h: number; w: number } {
-  const roll = rand();
-  const w = roll < 0.35 ? 2 : roll < 0.7 ? 3 : Math.max(2, Math.round(Math.sqrt(cells)));
-  const h = Math.max(2, Math.ceil(cells / w));
-  return rand() < 0.5 ? { h, w } : { h: w, w: h };
-}
-
 interface SpiralRegion {
   top: number;
   left: number;
@@ -140,29 +127,60 @@ function longestContiguousRun(path: Coord[], present: boolean[][]): Coord[] {
 }
 
 /**
- * Packs non-overlapping rectangles covering roughly `coverage` of the board,
- * to later become spiral pieces. Regions may sit flush against each other —
- * `buildSpiralPieces` resolves them in whatever order actually works, and
- * releases any it can't place. Placement only: nothing is reserved on the
+ * Cuts a rectangle into blocks of roughly `targetCells` each by repeatedly
+ * splitting along its longer axis, never leaving a side thinner than 2 (a
+ * 1-wide block can only ever hold a straight piece, which is exactly what
+ * we're trying to avoid). Partitioning beats scattering rectangles at
+ * random: random placement leaves wide uncovered gaps, and those gaps are
+ * where the board-spanning straight bars come from.
+ */
+function partitionIntoBlocks(
+  top: number,
+  left: number,
+  h: number,
+  w: number,
+  targetCells: number,
+  rand: () => number,
+  out: SpiralRegion[]
+): void {
+  const canSplitVertically = w >= 4;
+  const canSplitHorizontally = h >= 4;
+  // Randomised stopping size, so leaves range from a 4-cell hook up to a
+  // 12-cell coil instead of the whole board being the same U repeated.
+  const stopAt = targetCells * (1 + rand() * 1.6);
+  if (h * w <= stopAt || (!canSplitVertically && !canSplitHorizontally)) {
+    out.push({ top, left, h, w });
+    return;
+  }
+
+  const splitVertically = canSplitVertically && (!canSplitHorizontally || (w >= h ? rand() < 0.75 : rand() < 0.25));
+  if (splitVertically) {
+    const cut = 2 + Math.floor(rand() * (w - 3));
+    partitionIntoBlocks(top, left, h, cut, targetCells, rand, out);
+    partitionIntoBlocks(top, left + cut, h, w - cut, targetCells, rand, out);
+  } else {
+    const cut = 2 + Math.floor(rand() * (h - 3));
+    partitionIntoBlocks(top, left, cut, w, targetCells, rand, out);
+    partitionIntoBlocks(top + cut, left, h - cut, w, targetCells, rand, out);
+  }
+}
+
+/**
+ * Partitions the whole board into blocks and hands back `coverage` of them
+ * to become spiral pieces; the rest fall through to the normal peel as
+ * ordinary straight-ish pieces. Placement only — nothing is reserved on the
  * board here, `buildPieces` does that by consulting the returned rectangles.
  */
 function pickSpiralRegions(cols: number, rows: number, rand: () => number, coverage: number, cellsPerRegion: number): SpiralRegion[] {
   if (coverage <= 0 || cellsPerRegion <= 0) return [];
-  const targetCells = Math.floor(cols * rows * coverage);
-  const count = Math.floor(targetCells / cellsPerRegion);
-  if (count <= 0) return [];
+  if (rows < 4 || cols < 4) return [];
 
-  const placed: SpiralRegion[] = [];
-  for (let attempt = 0; attempt < count * 60 && placed.length < count; attempt++) {
-    const { h, w } = regionDimsForCells(cellsPerRegion, rand);
-    if (h > rows || w > cols) continue;
-    const top = Math.floor(rand() * (rows - h + 1));
-    const left = Math.floor(rand() * (cols - w + 1));
-    const clashes = placed.some((p) => top < p.top + p.h && top + h > p.top && left < p.left + p.w && left + w > p.left);
-    if (clashes) continue;
-    placed.push({ top, left, h, w });
-  }
-  return placed;
+  const blocks: SpiralRegion[] = [];
+  partitionIntoBlocks(0, 0, rows, cols, cellsPerRegion, rand, blocks);
+
+  const usable = blocks.filter((b) => b.h >= 2 && b.w >= 2);
+  const keep = Math.round(usable.length * coverage);
+  return shuffle(usable, rand).slice(0, keep);
 }
 
 /**
