@@ -83,7 +83,11 @@ function buildPieces(cols: number, rows: number, rand: () => number): Piece[] {
     const cells: Coord[] = [pick.cell];
     pieceIdGrid[pick.cell.row][pick.cell.col] = id;
 
-    const targetLen = MIN_PIECE_LEN + Math.floor(rand() * (MAX_PIECE_LEN - MIN_PIECE_LEN + 1));
+    // A growable candidate is always given a target length of at least 2 —
+    // otherwise a random low roll would waste a perfectly good growth
+    // opportunity on a needless singleton.
+    const minLen = fromGrowable ? 2 : MIN_PIECE_LEN;
+    const targetLen = minLen + Math.floor(rand() * (MAX_PIECE_LEN - minLen + 1));
     let cur = pick.cell;
     let direction = pick.dirs[Math.floor(rand() * pick.dirs.length)];
     let grewPastHead = false;
