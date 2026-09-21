@@ -1,57 +1,94 @@
 "use client";
 
-import { Coord, Puzzle } from "@/lib/types";
-import { sameCoord } from "@/lib/rules";
-import { ArrowIcon } from "./icons";
+import { Direction, Piece, Puzzle } from "@/lib/types";
+import { delta } from "@/lib/rules";
 
 interface MazeCanvasProps {
   puzzle: Puzzle;
   present: boolean[][];
-  flashCell: Coord | null;
+  flashPieceId: number | null;
   disabled?: boolean;
   onTap: (row: number, col: number) => void;
 }
 
-export function MazeCanvas({ puzzle, present, flashCell, disabled, onTap }: MazeCanvasProps) {
-  const { cols, rows, directions } = puzzle;
+const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180, left: 270 };
+
+/** The cell within a piece furthest along its own travel direction — where the arrowhead is drawn. */
+function headCellOf(piece: Piece) {
+  const d = delta(piece.direction);
+  let best = piece.cells[0];
+  let bestScore = best.row * d.row + best.col * d.col;
+  for (const cell of piece.cells) {
+    const score = cell.row * d.row + cell.col * d.col;
+    if (score > bestScore) {
+      bestScore = score;
+      best = cell;
+    }
+  }
+  return best;
+}
+
+export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: MazeCanvasProps) {
+  const { cols, rows, pieces } = puzzle;
 
   return (
     <div
       className="relative w-full select-none rounded-lg overflow-hidden bg-maze grid"
+      data-testid="maze-canvas"
+      data-pieces={JSON.stringify(pieces)}
       style={{
         aspectRatio: `${cols} / ${rows}`,
         gridTemplateColumns: `repeat(${cols}, 1fr)`,
         gridTemplateRows: `repeat(${rows}, 1fr)`,
       }}
     >
-      {directions.flatMap((row, r) =>
-        row.map((dir, c) => {
+      {Array.from({ length: rows }).flatMap((_, r) =>
+        Array.from({ length: cols }).map((__, c) => {
           const isPresent = present[r][c];
-          const isFlashing = !!flashCell && sameCoord(flashCell, { row: r, col: c });
           return (
             <button
               key={`${r}-${c}`}
               type="button"
               disabled={disabled || !isPresent}
               onClick={() => onTap(r, c)}
-              aria-label={isPresent ? `Piece at row ${r + 1}, column ${c + 1}, pointing ${dir}` : "Cleared"}
+              aria-label={isPresent ? `Piece at row ${r + 1}, column ${c + 1}` : "Cleared"}
               data-row={r}
               data-col={c}
-              data-dir={dir}
               data-present={isPresent}
-              className="relative flex items-center justify-center transition-opacity duration-150"
-              style={{ opacity: isPresent ? 1 : 0 }}
-            >
-              {isFlashing && <span className="absolute inset-[6%] rounded-sm bg-danger/50" />}
-              <ArrowIcon
-                direction={dir}
-                className="relative w-full h-full"
-                style={{ color: isFlashing ? "var(--danger)" : "var(--line)" }}
-              />
-            </button>
+              className="relative"
+            />
           );
         })
       )}
+
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        viewBox={`0 0 ${cols} ${rows}`}
+        preserveAspectRatio="none"
+      >
+        {pieces.map((piece) => {
+          const head = headCellOf(piece);
+          const isPresent = present[head.row][head.col];
+          const isFlashing = flashPieceId === piece.id;
+          const color = isFlashing ? "var(--danger)" : "var(--line)";
+          const points = piece.cells.map((cell) => `${cell.col + 0.5},${cell.row + 0.5}`).join(" ");
+          const rotation = ARROW_ROTATION[piece.direction];
+
+          return (
+            <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
+              <polyline points={points} fill="none" stroke={color} strokeWidth={0.14} strokeLinecap="round" strokeLinejoin="round" />
+              {piece.cells
+                .filter((cell) => cell.row !== head.row || cell.col !== head.col)
+                .map((cell, i) => (
+                  <circle key={i} cx={cell.col + 0.5} cy={cell.row + 0.5} r={0.13} fill={color} />
+                ))}
+              <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
+                <path d="M0 -0.46 L0.23 -0.1 L0.07 -0.1 L0.07 0.42 L-0.07 0.42 L-0.07 -0.1 L-0.23 -0.1 Z" fill={color} />
+              </g>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }

@@ -1,36 +1,3 @@
-import { Direction } from "@/lib/types";
-
-const rotation: Record<Direction, number> = {
-  up: 0,
-  right: 90,
-  down: 180,
-  left: 270,
-};
-
-export function ArrowIcon({
-  direction,
-  className = "",
-  style,
-}: {
-  direction: Direction;
-  className?: string;
-  style?: React.CSSProperties;
-}) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      style={{ transform: `rotate(${rotation[direction]}deg)`, ...style }}
-      fill="none"
-    >
-      <path
-        d="M12 1.5L17 9H13.6V24H10.4V9H7L12 1.5Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 export function FlameIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">

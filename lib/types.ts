@@ -8,16 +8,24 @@ export interface Coord {
 export type DifficultyTier = "Easy" | "Medium" | "Hard" | "Hardest";
 
 /**
- * Every cell holds one arrow piece. Tapping a piece clears it (removes it
- * from the board) only if its straight-line path in `directions[r][c]`, out
- * to the board edge, is free of every other still-present piece.
+ * A piece occupies a connected, bent path of one or more cells (`cells`,
+ * ordered tail-to-head) and slides rigidly in `direction` when tapped. It
+ * clears only if every cell in its path from each of its own cells out to
+ * the board edge, in `direction`, is free of every OTHER still-present
+ * piece — its own cells never block each other since they move together.
  */
+export interface Piece {
+  id: number;
+  cells: Coord[];
+  direction: Direction;
+}
+
 export interface Puzzle {
   id: string;
   level: number;
   cols: number;
   rows: number;
-  directions: Direction[][];
+  pieces: Piece[];
   tier: DifficultyTier;
   seed: number;
 }

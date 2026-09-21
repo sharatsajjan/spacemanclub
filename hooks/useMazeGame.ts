@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Coord, Puzzle } from "@/lib/types";
-import { pathClear } from "@/lib/rules";
+import { Puzzle } from "@/lib/types";
+import { pieceCanExit } from "@/lib/rules";
 import { maxHintsForLevel } from "@/lib/difficultyWave";
 
 interface UseMazeGameOptions {
@@ -15,24 +15,33 @@ function makePresentGrid(cols: number, rows: number): boolean[][] {
   return Array.from({ length: rows }, () => new Array(cols).fill(true));
 }
 
+function buildPieceIdGrid(puzzle: Puzzle): number[][] {
+  const grid = Array.from({ length: puzzle.rows }, () => new Array(puzzle.cols).fill(-1));
+  for (const piece of puzzle.pieces) {
+    for (const cell of piece.cells) grid[cell.row][cell.col] = piece.id;
+  }
+  return grid;
+}
+
 export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOptions) {
+  const pieceIdGrid = useMemo(() => buildPieceIdGrid(puzzle), [puzzle]);
+  const piecesById = useMemo(() => new Map(puzzle.pieces.map((p) => [p.id, p])), [puzzle]);
+
   const [present, setPresent] = useState<boolean[][]>(() => makePresentGrid(puzzle.cols, puzzle.rows));
-  const [flashCell, setFlashCell] = useState<Coord | null>(null);
+  const [clearedCount, setClearedCount] = useState(0);
+  const [flashPieceId, setFlashPieceId] = useState<number | null>(null);
   const [mistakes, setMistakes] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finishedRef = useRef(false);
 
   const maxHints = useMemo(() => maxHintsForLevel(puzzle.level), [puzzle.level]);
-  const totalPieces = puzzle.cols * puzzle.rows;
-  const clearedCount = useMemo(
-    () => present.reduce((sum, row) => sum + row.filter((p) => !p).length, 0),
-    [present]
-  );
+  const totalPieces = puzzle.pieces.length;
 
   useEffect(() => {
     setPresent(makePresentGrid(puzzle.cols, puzzle.rows));
-    setFlashCell(null);
+    setClearedCount(0);
+    setFlashPieceId(null);
     setMistakes(0);
     setHintsUsed(0);
     finishedRef.current = false;
@@ -44,64 +53,67 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     };
   }, []);
 
-  const triggerFlash = useCallback((coord: Coord) => {
-    setFlashCell(coord);
+  const triggerFlash = useCallback((pieceId: number) => {
+    setFlashPieceId(pieceId);
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
-    flashTimeoutRef.current = setTimeout(() => setFlashCell(null), 350);
+    flashTimeoutRef.current = setTimeout(() => setFlashPieceId(null), 350);
   }, []);
+
+  const clearPiece = useCallback(
+    (id: number) => {
+      const piece = piecesById.get(id);
+      if (!piece) return;
+      const next = present.map((r) => r.slice());
+      for (const cell of piece.cells) next[cell.row][cell.col] = false;
+      setPresent(next);
+      setClearedCount((n) => {
+        const nextCount = n + 1;
+        if (nextCount === totalPieces) {
+          finishedRef.current = true;
+          onAllComplete();
+        }
+        return nextCount;
+      });
+    },
+    [present, piecesById, totalPieces, onAllComplete]
+  );
 
   const tapCell = useCallback(
     (row: number, col: number) => {
       if (finishedRef.current) return;
-      if (!present[row][col]) return; // already cleared, no-op
+      const id = pieceIdGrid[row][col];
+      if (id === -1 || !present[row][col]) return; // already cleared, no-op
 
-      const dir = puzzle.directions[row][col];
-      const clear = pathClear(present, puzzle.cols, puzzle.rows, row, col, dir);
+      const piece = piecesById.get(id)!;
+      const canExit = pieceCanExit(present, pieceIdGrid, id, piece.cells, puzzle.cols, puzzle.rows, piece.direction);
 
-      if (clear) {
-        const next = present.map((r) => r.slice());
-        next[row][col] = false;
-        setPresent(next);
-        const remaining = next.reduce((sum, r) => sum + r.filter((p) => p).length, 0);
-        if (remaining === 0) {
-          finishedRef.current = true;
-          onAllComplete();
-        }
+      if (canExit) {
+        clearPiece(id);
       } else {
         setMistakes((m) => m + 1);
-        triggerFlash({ row, col });
+        triggerFlash(id);
         onMistake();
       }
     },
-    [present, puzzle, onMistake, onAllComplete, triggerFlash]
+    [present, pieceIdGrid, piecesById, puzzle.cols, puzzle.rows, clearPiece, onMistake, triggerFlash]
   );
 
   const requestHint = useCallback(() => {
     if (finishedRef.current || hintsUsed >= maxHints) return;
-    const clearable: Coord[] = [];
-    for (let r = 0; r < puzzle.rows; r++) {
-      for (let c = 0; c < puzzle.cols; c++) {
-        if (present[r][c] && pathClear(present, puzzle.cols, puzzle.rows, r, c, puzzle.directions[r][c])) {
-          clearable.push({ row: r, col: c });
-        }
-      }
-    }
+    const clearable = puzzle.pieces.filter(
+      (piece) =>
+        present[piece.cells[0].row][piece.cells[0].col] &&
+        pieceCanExit(present, pieceIdGrid, piece.id, piece.cells, puzzle.cols, puzzle.rows, piece.direction)
+    );
     if (clearable.length === 0) return;
     const pick = clearable[Math.floor(Math.random() * clearable.length)];
-    const next = present.map((r) => r.slice());
-    next[pick.row][pick.col] = false;
-    setPresent(next);
     setHintsUsed((h) => h + 1);
-    const remaining = next.reduce((sum, r) => sum + r.filter((p) => p).length, 0);
-    if (remaining === 0) {
-      finishedRef.current = true;
-      onAllComplete();
-    }
-  }, [present, puzzle, hintsUsed, maxHints, onAllComplete]);
+    clearPiece(pick.id);
+  }, [present, pieceIdGrid, puzzle.pieces, puzzle.cols, puzzle.rows, hintsUsed, maxHints, clearPiece]);
 
   return {
     present,
-    flashCell,
+    flashPieceId,
     mistakes,
     hintsUsed,
     maxHints,

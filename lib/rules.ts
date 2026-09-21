@@ -24,25 +24,30 @@ export function inBounds(cols: number, rows: number, c: Coord): boolean {
 }
 
 /**
- * Whether the piece at (row, col) can clear right now: walking from it in
- * `dir` must reach the board edge without passing through any other cell
- * that's still marked `present` (not yet cleared).
+ * Whether a piece can clear right now: sweeping every one of its own cells
+ * in `dir` must reach the board edge without passing through a cell that
+ * belongs to a DIFFERENT, still-present piece. A piece's own cells never
+ * block its own sweep since the whole piece moves together as one rigid
+ * body.
  */
-export function pathClear(
+export function pieceCanExit(
   present: boolean[][],
+  pieceIdGrid: number[][],
+  pieceId: number,
+  cells: Coord[],
   cols: number,
   rows: number,
-  row: number,
-  col: number,
   dir: Direction
 ): boolean {
   const d = delta(dir);
-  let r = row + d.row;
-  let c = col + d.col;
-  while (r >= 0 && r < rows && c >= 0 && c < cols) {
-    if (present[r][c]) return false;
-    r += d.row;
-    c += d.col;
+  for (const cell of cells) {
+    let r = cell.row + d.row;
+    let c = cell.col + d.col;
+    while (r >= 0 && r < rows && c >= 0 && c < cols) {
+      if (present[r][c] && pieceIdGrid[r][c] !== pieceId) return false;
+      r += d.row;
+      c += d.col;
+    }
   }
   return true;
 }
