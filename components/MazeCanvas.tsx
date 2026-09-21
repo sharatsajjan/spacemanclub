@@ -1,6 +1,6 @@
 "use client";
 
-import { Direction, Piece, Puzzle } from "@/lib/types";
+import { Coord, Direction, Piece, Puzzle } from "@/lib/types";
 import { delta } from "@/lib/rules";
 
 interface MazeCanvasProps {
@@ -12,8 +12,36 @@ interface MazeCanvasProps {
 }
 
 const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180, left: 270 };
-const ARROW_PATH = "M0 -0.46 L0.23 -0.1 L0.07 -0.1 L0.07 0.42 L-0.07 0.42 L-0.07 -0.1 L-0.23 -0.1 Z";
-const ARROW_HALO_PATH = "M0 -0.55 L0.32 -0.02 L0.12 -0.02 L0.12 0.51 L-0.12 0.51 L-0.12 -0.02 L-0.32 -0.02 Z";
+/** Open chevron (not a filled triangle) so it reads as the line's own tip, not a separate icon. */
+const CHEVRON_PATH = "M-0.22 -0.06 L0 -0.42 L0.22 -0.06";
+const CORNER_RADIUS = 0.22;
+
+function normalize(dx: number, dy: number) {
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len };
+}
+
+/** A piece's line as an SVG path with smoothly rounded corners instead of sharp right angles. */
+function buildRoundedPath(cells: Coord[]): string {
+  const pts = cells.map((c) => ({ x: c.col + 0.5, y: c.row + 0.5 }));
+  if (pts.length < 2) return "";
+  if (pts.length === 2) return `M${pts[0].x} ${pts[0].y} L${pts[1].x} ${pts[1].y}`;
+
+  let d = `M${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const prev = pts[i - 1];
+    const cur = pts[i];
+    const next = pts[i + 1];
+    const toPrev = normalize(prev.x - cur.x, prev.y - cur.y);
+    const toNext = normalize(next.x - cur.x, next.y - cur.y);
+    const a = { x: cur.x + toPrev.x * CORNER_RADIUS, y: cur.y + toPrev.y * CORNER_RADIUS };
+    const b = { x: cur.x + toNext.x * CORNER_RADIUS, y: cur.y + toNext.y * CORNER_RADIUS };
+    d += ` L${a.x} ${a.y} Q${cur.x} ${cur.y} ${b.x} ${b.y}`;
+  }
+  const last = pts[pts.length - 1];
+  d += ` L${last.x} ${last.y}`;
+  return d;
+}
 
 /**
  * Where the arrowhead is drawn: whichever of the piece's two true path ends
@@ -77,18 +105,18 @@ export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: M
         {pieces.map((piece) => {
           const head = headCellOf(piece);
           const isPresent = present[head.row][head.col];
-          const points = piece.cells.map((cell) => `${cell.col + 0.5},${cell.row + 0.5}`).join(" ");
+          const path = buildRoundedPath(piece.cells);
           const rotation = ARROW_ROTATION[piece.direction];
           const dots = piece.cells.filter((cell) => cell.row !== head.row || cell.col !== head.col);
 
           return (
             <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
-              <polyline points={points} fill="none" stroke="var(--maze)" strokeWidth={0.3} strokeLinecap="round" strokeLinejoin="round" />
+              {path && <path d={path} fill="none" stroke="var(--maze)" strokeWidth={0.32} strokeLinecap="round" strokeLinejoin="round" />}
               {dots.map((cell, i) => (
                 <circle key={i} cx={cell.col + 0.5} cy={cell.row + 0.5} r={0.21} fill="var(--maze)" />
               ))}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
-                <path d={ARROW_HALO_PATH} fill="var(--maze)" />
+                <path d={CHEVRON_PATH} fill="none" stroke="var(--maze)" strokeWidth={0.32} strokeLinecap="round" strokeLinejoin="round" />
               </g>
             </g>
           );
@@ -100,18 +128,18 @@ export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: M
           const isPresent = present[head.row][head.col];
           const isFlashing = flashPieceId === piece.id;
           const color = isFlashing ? "var(--danger)" : "var(--line)";
-          const points = piece.cells.map((cell) => `${cell.col + 0.5},${cell.row + 0.5}`).join(" ");
+          const path = buildRoundedPath(piece.cells);
           const rotation = ARROW_ROTATION[piece.direction];
           const dots = piece.cells.filter((cell) => cell.row !== head.row || cell.col !== head.col);
 
           return (
             <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
-              <polyline points={points} fill="none" stroke={color} strokeWidth={0.14} strokeLinecap="round" strokeLinejoin="round" />
+              {path && <path d={path} fill="none" stroke={color} strokeWidth={0.14} strokeLinecap="round" strokeLinejoin="round" />}
               {dots.map((cell, i) => (
                 <circle key={i} cx={cell.col + 0.5} cy={cell.row + 0.5} r={0.13} fill={color} />
               ))}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
-                <path d={ARROW_PATH} fill={color} />
+                <path d={CHEVRON_PATH} fill="none" stroke={color} strokeWidth={0.14} strokeLinecap="round" strokeLinejoin="round" />
               </g>
             </g>
           );
