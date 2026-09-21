@@ -12,9 +12,12 @@ interface MazeCanvasProps {
 }
 
 const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180, left: 270 };
-/** Open chevron (not a filled triangle) so it reads as the line's own tip, not a separate icon. */
-const CHEVRON_PATH = "M-0.22 -0.06 L0 -0.42 L0.22 -0.06";
-const CORNER_RADIUS = 0.22;
+/** Solid filled arrow cap, flared wider than the line so it reads as a clear
+ * arrowhead, with its base sitting exactly at the cell center so it meets
+ * the line's own (round-capped) end with no gap or visible seam. */
+const ARROW_PATH = "M0 -0.44 L0.26 0 L-0.26 0 Z";
+const LINE_WIDTH = 0.34;
+const CORNER_RADIUS = 0.26;
 
 function normalize(dx: number, dy: number) {
   const len = Math.hypot(dx, dy) || 1;
@@ -98,10 +101,11 @@ export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: M
         viewBox={`0 0 ${cols} ${rows}`}
         preserveAspectRatio="none"
       >
-        {/* Every piece's line, dots and arrowhead. No background halo/gap between
-            pieces — now that each arrow always continues its own line's real
-            direction, adjacent pieces can flow together seamlessly like the
-            reference, without reading as one wrongly-connected line. */}
+        {/* Every piece: a thick, chunky pipe-like line (no dots — the reference
+            has none) capped with a solid flared arrowhead at the exit end. No
+            background halo/gap between pieces — each arrow always continues
+            its own line's real direction, so adjacent pieces flow together
+            seamlessly like the reference. */}
         {pieces.map((piece) => {
           const head = headCellOf(piece);
           const isPresent = present[head.row][head.col];
@@ -109,16 +113,12 @@ export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: M
           const color = isFlashing ? "var(--danger)" : "var(--line)";
           const path = buildRoundedPath(piece.cells);
           const rotation = ARROW_ROTATION[piece.direction];
-          const dots = piece.cells.filter((cell) => cell.row !== head.row || cell.col !== head.col);
 
           return (
             <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
-              {path && <path d={path} fill="none" stroke={color} strokeWidth={0.14} strokeLinecap="round" strokeLinejoin="round" />}
-              {dots.map((cell, i) => (
-                <circle key={i} cx={cell.col + 0.5} cy={cell.row + 0.5} r={0.13} fill={color} />
-              ))}
+              {path && <path d={path} fill="none" stroke={color} strokeWidth={LINE_WIDTH} strokeLinecap="round" strokeLinejoin="round" />}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
-                <path d={CHEVRON_PATH} fill="none" stroke={color} strokeWidth={0.14} strokeLinecap="round" strokeLinejoin="round" />
+                <path d={ARROW_PATH} fill={color} />
               </g>
             </g>
           );
