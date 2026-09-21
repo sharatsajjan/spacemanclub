@@ -84,8 +84,10 @@ export default function PlayPage() {
   return (
     <>
       <ThemeStyle themeId={profile.theme} />
-      <main className="min-h-screen bg-outer flex flex-col">
-        <div className="w-full max-w-sm mx-auto flex flex-col flex-1 px-4 py-5">
+      {/* dvh, not vh: on mobile the address bar would otherwise push the
+          booster bar off the bottom of the screen. */}
+      <main className="h-[100dvh] bg-outer flex flex-col">
+        <div className="w-full max-w-sm mx-auto flex flex-col flex-1 min-h-0 px-4 py-4">
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => router.push("/")} aria-label="Back to home" className="text-sub">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Direction, Puzzle } from "@/lib/types";
 import { pieceCanExit } from "@/lib/rules";
-import { maxHintsForLevel } from "@/lib/difficultyWave";
+import { maxHintsForLevel, maxUndosForLevel } from "@/lib/difficultyWave";
 import { hapticHint, hapticMistake, hapticSuccess } from "@/lib/haptics";
 
 interface UseMazeGameOptions {
@@ -42,11 +42,15 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
   // gameplay logic (what's blocking, what's tappable) updates instantly
   // while the visual only catches up a moment later.
   const [exitingPieces, setExitingPieces] = useState<Map<number, Direction>>(() => new Map());
+  /** Ids of cleared pieces, most recent last — the undo stack. */
+  const [clearHistory, setClearHistory] = useState<number[]>([]);
+  const [undosUsed, setUndosUsed] = useState(0);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exitTimeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const finishedRef = useRef(false);
 
   const maxHints = useMemo(() => maxHintsForLevel(puzzle.level), [puzzle.level]);
+  const maxUndos = useMemo(() => maxUndosForLevel(puzzle.level), [puzzle.level]);
   const totalPieces = puzzle.pieces.length;
 
   useEffect(() => {
@@ -56,6 +60,8 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     setHintPieceId(null);
     setMistakes(0);
     setHintsUsed(0);
+    setClearHistory([]);
+    setUndosUsed(0);
     finishedRef.current = false;
     exitTimeoutsRef.current.forEach((t) => clearTimeout(t));
     exitTimeoutsRef.current.clear();
@@ -83,6 +89,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       for (const cell of piece.cells) next[cell.row][cell.col] = false;
       setPresent(next);
       setHintPieceId((h) => (h === id ? null : h));
+      setClearHistory((h) => [...h, id]);
       hapticSuccess();
 
       setExitingPieces((prev) => {
@@ -152,6 +159,39 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     hapticHint();
   }, [present, pieceIdGrid, puzzle.pieces, puzzle.cols, puzzle.rows, hintsUsed, maxHints]);
 
+  /** Puts the most recently cleared piece back. Safe at any point: a piece
+   * that was legal to clear is always legal to restore, since putting cells
+   * back can only ever block other pieces, never strand one — and anything
+   * it now blocks was cleared after it, so it isn't on the board either. */
+  const undoLastClear = useCallback(() => {
+    if (finishedRef.current || undosUsed >= maxUndos || clearHistory.length === 0) return;
+    const id = clearHistory[clearHistory.length - 1];
+    const piece = piecesById.get(id);
+    if (!piece) return;
+
+    const next = present.map((r) => r.slice());
+    for (const cell of piece.cells) next[cell.row][cell.col] = true;
+    setPresent(next);
+    setClearHistory((h) => h.slice(0, -1));
+    setUndosUsed((u) => u + 1);
+    setClearedCount((n) => Math.max(0, n - 1));
+
+    // Cancel any in-flight slide-out so the piece doesn't animate away while
+    // it's being put back.
+    const pendingExit = exitTimeoutsRef.current.get(id);
+    if (pendingExit) {
+      clearTimeout(pendingExit);
+      exitTimeoutsRef.current.delete(id);
+    }
+    setExitingPieces((prev) => {
+      if (!prev.has(id)) return prev;
+      const nextMap = new Map(prev);
+      nextMap.delete(id);
+      return nextMap;
+    });
+    hapticHint();
+  }, [present, piecesById, clearHistory, undosUsed, maxUndos]);
+
   return {
     present,
     exitingPieces,
@@ -160,9 +200,13 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     mistakes,
     hintsUsed,
     maxHints,
+    undosUsed,
+    maxUndos,
+    canUndo: clearHistory.length > 0 && undosUsed < maxUndos,
     clearedCount,
     totalPieces,
     tapCell,
     requestHint,
+    undoLastClear,
   };
 }
