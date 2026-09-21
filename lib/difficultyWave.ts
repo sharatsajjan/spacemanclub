@@ -11,7 +11,14 @@ import { DifficultyTier } from "./types";
 const CYCLE_LEN = 5;
 const TIERS: DifficultyTier[] = ["Easy", "Medium", "Medium", "Hard", "Hardest"];
 const TIER_BONUS = [0, 1, 1, 2, 3];
-const MAX_SCALE = 22;
+/**
+ * The board size itself is hard-capped at 12x18 (216 cells) by gridForLevel
+ * below, once targetCells reaches ~216 (scale ~24) — that's the real
+ * ceiling, not this constant. MAX_SCALE just needs to sit safely above it so
+ * the scale formula's own clamp never kicks in earlier than the board-size
+ * clamp already does.
+ */
+const MAX_SCALE = 26;
 
 /**
  * The first `RAMP_LEVELS` levels ease in from a tiny board (a handful of
@@ -36,7 +43,11 @@ function cycleIndex(level: number): number {
 /** Internal difficulty knob driving board size — not a literal piece count. */
 function difficultyScaleForLevel(level: number): number {
   const pos = (level - 1) % CYCLE_LEN;
-  const cycleBase = 3 + Math.floor(cycleIndex(level) * 0.8);
+  // Climbs to the board-size ceiling by around level 50 (was ~level 280) —
+  // fast enough that a player actually reaches max difficulty in normal
+  // play, instead of the game staying easy for the first hundred-plus
+  // levels before it matters.
+  const cycleBase = 3 + cycleIndex(level) * 2;
   const naturalScale = Math.min(MAX_SCALE, cycleBase + TIER_BONUS[pos]);
   if (level >= RAMP_LEVELS) return naturalScale;
   const rampFrac = level / RAMP_LEVELS;

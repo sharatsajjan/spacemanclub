@@ -1,16 +1,21 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { Coord, Direction, Piece, Puzzle } from "@/lib/types";
 import { delta } from "@/lib/rules";
 
 interface MazeCanvasProps {
   puzzle: Puzzle;
   present: boolean[][];
+  exitingPieces: Map<number, Direction>;
   flashPieceId: number | null;
   hintPieceId: number | null;
   disabled?: boolean;
   onTap: (row: number, col: number) => void;
 }
+
+/** Must stay in sync with EXIT_ANIMATION_MS in useMazeGame.ts. */
+const EXIT_TRANSITION = "transform 380ms cubic-bezier(0.4, 0, 1, 1)";
 
 const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180, left: 270 };
 /** Solid filled arrow cap, flared wider than the line so it reads as a clear
@@ -68,7 +73,17 @@ function headCellOf(piece: Piece) {
   return lastScore >= firstScore ? last : first;
 }
 
-export function MazeCanvas({ puzzle, present, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
+/** Slide offset in viewBox units, far enough to clear the board on either axis. */
+function slideTransform(cols: number, rows: number, exitDir: Direction): string {
+  const d = delta(exitDir);
+  const tx = d.col * (cols + 2);
+  const ty = d.row * (rows + 2);
+  return `translate(${tx} ${ty})`;
+}
+
+const EXIT_TRANSITION_STYLE: CSSProperties = { transition: EXIT_TRANSITION };
+
+export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
   const { cols, rows, pieces } = puzzle;
 
   return (
@@ -115,11 +130,17 @@ export function MazeCanvas({ puzzle, present, flashPieceId, hintPieceId, disable
         {pieces.map((piece) => {
           const head = headCellOf(piece);
           const isPresent = present[head.row][head.col];
+          const exitDir = exitingPieces.get(piece.id);
+          if (!isPresent && !exitDir) return null;
           const path = buildRoundedPath(piece.cells);
           const rotation = ARROW_ROTATION[piece.direction];
 
           return (
-            <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
+            <g
+              key={piece.id}
+              transform={exitDir ? slideTransform(cols, rows, exitDir) : undefined}
+              style={exitDir ? EXIT_TRANSITION_STYLE : { opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
+            >
               {path && <path d={path} fill="none" stroke="var(--maze)" strokeWidth={HALO_WIDTH} strokeLinecap="round" strokeLinejoin="round" />}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
                 <path d={ARROW_HALO_PATH} fill="var(--maze)" />
@@ -134,6 +155,8 @@ export function MazeCanvas({ puzzle, present, flashPieceId, hintPieceId, disable
         {pieces.map((piece) => {
           const head = headCellOf(piece);
           const isPresent = present[head.row][head.col];
+          const exitDir = exitingPieces.get(piece.id);
+          if (!isPresent && !exitDir) return null;
           const isFlashing = flashPieceId === piece.id;
           const isHinted = hintPieceId === piece.id;
           const color = isFlashing ? "var(--danger)" : isHinted ? HINT_COLOR : "var(--line)";
@@ -144,7 +167,8 @@ export function MazeCanvas({ puzzle, present, flashPieceId, hintPieceId, disable
             <g
               key={piece.id}
               className={isHinted ? "animate-pulse" : undefined}
-              style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
+              transform={exitDir ? slideTransform(cols, rows, exitDir) : undefined}
+              style={exitDir ? EXIT_TRANSITION_STYLE : { opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
             >
               {path && <path d={path} fill="none" stroke={color} strokeWidth={LINE_WIDTH} strokeLinecap="round" strokeLinejoin="round" />}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>

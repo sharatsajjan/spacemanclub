@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Puzzle } from "@/lib/types";
+import { Direction, Puzzle } from "@/lib/types";
 import { pieceCanExit } from "@/lib/rules";
 import { maxHintsForLevel } from "@/lib/difficultyWave";
 
@@ -10,6 +10,9 @@ interface UseMazeGameOptions {
   onMistake: () => void;
   onAllComplete: () => void;
 }
+
+/** Must stay in sync with the slide transition duration in MazeCanvas. */
+const EXIT_ANIMATION_MS = 380;
 
 function makePresentGrid(cols: number, rows: number): boolean[][] {
   return Array.from({ length: rows }, () => new Array(cols).fill(true));
@@ -33,7 +36,13 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
   const [hintPieceId, setHintPieceId] = useState<number | null>(null);
   const [mistakes, setMistakes] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
+  // Pieces mid slide-out animation: kept rendered (in their exit direction)
+  // for a short window after they're already removed from `present`, so
+  // gameplay logic (what's blocking, what's tappable) updates instantly
+  // while the visual only catches up a moment later.
+  const [exitingPieces, setExitingPieces] = useState<Map<number, Direction>>(() => new Map());
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exitTimeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const finishedRef = useRef(false);
 
   const maxHints = useMemo(() => maxHintsForLevel(puzzle.level), [puzzle.level]);
@@ -47,11 +56,15 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     setMistakes(0);
     setHintsUsed(0);
     finishedRef.current = false;
+    exitTimeoutsRef.current.forEach((t) => clearTimeout(t));
+    exitTimeoutsRef.current.clear();
+    setExitingPieces(new Map());
   }, [puzzle.id, puzzle.cols, puzzle.rows]);
 
   useEffect(() => {
     return () => {
       if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      exitTimeoutsRef.current.forEach((t) => clearTimeout(t));
     };
   }, []);
 
@@ -69,6 +82,27 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       for (const cell of piece.cells) next[cell.row][cell.col] = false;
       setPresent(next);
       setHintPieceId((h) => (h === id ? null : h));
+
+      setExitingPieces((prev) => {
+        const nextMap = new Map(prev);
+        nextMap.set(id, piece.direction);
+        return nextMap;
+      });
+      const existingTimeout = exitTimeoutsRef.current.get(id);
+      if (existingTimeout) clearTimeout(existingTimeout);
+      exitTimeoutsRef.current.set(
+        id,
+        setTimeout(() => {
+          exitTimeoutsRef.current.delete(id);
+          setExitingPieces((prev) => {
+            if (!prev.has(id)) return prev;
+            const nextMap = new Map(prev);
+            nextMap.delete(id);
+            return nextMap;
+          });
+        }, EXIT_ANIMATION_MS)
+      );
+
       setClearedCount((n) => {
         const nextCount = n + 1;
         if (nextCount === totalPieces) {
@@ -116,6 +150,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
 
   return {
     present,
+    exitingPieces,
     flashPieceId,
     hintPieceId,
     mistakes,

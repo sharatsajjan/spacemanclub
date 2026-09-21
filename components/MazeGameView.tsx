@@ -64,6 +64,7 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
       <MazeCanvas
         puzzle={puzzle}
         present={game.present}
+        exitingPieces={game.exitingPieces}
         flashPieceId={game.flashPieceId}
         hintPieceId={game.hintPieceId}
         onTap={game.tapCell}
