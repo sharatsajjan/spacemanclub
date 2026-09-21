@@ -61,7 +61,13 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
           Hint ({game.maxHints - game.hintsUsed})
         </button>
       </div>
-      <MazeCanvas puzzle={puzzle} present={game.present} flashPieceId={game.flashPieceId} onTap={game.tapCell} />
+      <MazeCanvas
+        puzzle={puzzle}
+        present={game.present}
+        flashPieceId={game.flashPieceId}
+        hintPieceId={game.hintPieceId}
+        onTap={game.tapCell}
+      />
       <p className="text-center text-[11px] text-sub2 mt-3">
         {game.clearedCount}/{game.totalPieces} pieces cleared &mdash; tap a piece to send it sliding off the board
         the way its arrow points. A blocked tap costs a life.

@@ -30,6 +30,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
   const [present, setPresent] = useState<boolean[][]>(() => makePresentGrid(puzzle.cols, puzzle.rows));
   const [clearedCount, setClearedCount] = useState(0);
   const [flashPieceId, setFlashPieceId] = useState<number | null>(null);
+  const [hintPieceId, setHintPieceId] = useState<number | null>(null);
   const [mistakes, setMistakes] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,6 +43,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     setPresent(makePresentGrid(puzzle.cols, puzzle.rows));
     setClearedCount(0);
     setFlashPieceId(null);
+    setHintPieceId(null);
     setMistakes(0);
     setHintsUsed(0);
     finishedRef.current = false;
@@ -66,6 +68,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       const next = present.map((r) => r.slice());
       for (const cell of piece.cells) next[cell.row][cell.col] = false;
       setPresent(next);
+      setHintPieceId((h) => (h === id ? null : h));
       setClearedCount((n) => {
         const nextCount = n + 1;
         if (nextCount === totalPieces) {
@@ -108,12 +111,13 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     if (clearable.length === 0) return;
     const pick = clearable[Math.floor(Math.random() * clearable.length)];
     setHintsUsed((h) => h + 1);
-    clearPiece(pick.id);
-  }, [present, pieceIdGrid, puzzle.pieces, puzzle.cols, puzzle.rows, hintsUsed, maxHints, clearPiece]);
+    setHintPieceId(pick.id);
+  }, [present, pieceIdGrid, puzzle.pieces, puzzle.cols, puzzle.rows, hintsUsed, maxHints]);
 
   return {
     present,
     flashPieceId,
+    hintPieceId,
     mistakes,
     hintsUsed,
     maxHints,

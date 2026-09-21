@@ -7,6 +7,7 @@ interface MazeCanvasProps {
   puzzle: Puzzle;
   present: boolean[][];
   flashPieceId: number | null;
+  hintPieceId: number | null;
   disabled?: boolean;
   onTap: (row: number, col: number) => void;
 }
@@ -20,6 +21,8 @@ const ARROW_HALO_PATH = "M0 -0.5 L0.32 0.04 L-0.32 0.04 Z";
 const LINE_WIDTH = 0.34;
 const HALO_WIDTH = 0.46;
 const CORNER_RADIUS = 0.26;
+/** Fixed amber/gold, independent of theme — same role as the always-red danger flash. */
+const HINT_COLOR = "#e0983d";
 
 function normalize(dx: number, dy: number) {
   const len = Math.hypot(dx, dy) || 1;
@@ -65,7 +68,7 @@ function headCellOf(piece: Piece) {
   return lastScore >= firstScore ? last : first;
 }
 
-export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: MazeCanvasProps) {
+export function MazeCanvas({ puzzle, present, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
   const { cols, rows, pieces } = puzzle;
 
   return (
@@ -125,17 +128,24 @@ export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: M
           );
         })}
 
-        {/* Pass 2: every piece's actual thick pipe-like line and solid arrowhead. */}
+        {/* Pass 2: every piece's actual thick pipe-like line and solid arrowhead.
+            The hinted piece (from tapping Hint) pulses in amber/gold, independent
+            of theme, so the player can see exactly which line to tap next. */}
         {pieces.map((piece) => {
           const head = headCellOf(piece);
           const isPresent = present[head.row][head.col];
           const isFlashing = flashPieceId === piece.id;
-          const color = isFlashing ? "var(--danger)" : "var(--line)";
+          const isHinted = hintPieceId === piece.id;
+          const color = isFlashing ? "var(--danger)" : isHinted ? HINT_COLOR : "var(--line)";
           const path = buildRoundedPath(piece.cells);
           const rotation = ARROW_ROTATION[piece.direction];
 
           return (
-            <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
+            <g
+              key={piece.id}
+              className={isHinted ? "animate-pulse" : undefined}
+              style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
+            >
               {path && <path d={path} fill="none" stroke={color} strokeWidth={LINE_WIDTH} strokeLinecap="round" strokeLinejoin="round" />}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
                 <path d={ARROW_PATH} fill={color} />

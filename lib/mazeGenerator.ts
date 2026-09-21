@@ -6,25 +6,36 @@ import { gridForLevel, tierForLevel } from "./difficultyWave";
 const MIN_PIECE_LEN = 1;
 const MAX_PIECE_LEN = 5;
 
+interface Candidate {
+  cell: Coord;
+  dirs: Direction[];
+  /** Dirs where a 2-cell piece (this cell + the one directly behind it) still clears. */
+  growDirs: Direction[];
+}
+
 /**
  * Builds the whole board directly in clearing order — every piece is
  * created already knowing it can exit right now, so no separate
  * generate-then-solve pass is needed:
  *
- *  1. Pick a random still-present cell that has >=1 direction where
- *     sweeping just that cell reaches the board edge clear of every other
- *     present piece — this becomes a new piece's head, with that direction
- *     as its exit direction.
- *  2. Grow a tail from the head. The FIRST extension is mandatory: exactly
- *     the one cell directly behind the head, opposite the exit direction —
- *     this is what makes the arrow read as a continuation of the piece's
- *     own line (like the reference), not an arbitrary slide direction
- *     unrelated to its shape. Every extension after that first one can bend
- *     freely to any available neighbor, as long as the whole piece so far
- *     still clears in the exit direction. A piece that can't take that
- *     first mandatory step stays a single cell (still perfectly valid).
- *  3. Repeat until no present cell has any valid direction left.
- *  4. Guaranteed fallback: any leftover cells (not observed in testing up
+ *  1. Find every still-present cell with >=1 direction where sweeping just
+ *     that cell reaches the board edge clear of every other present piece —
+ *     each is a candidate new piece head. For each, also check which of
+ *     those directions would STILL clear if extended to include the one
+ *     cell directly behind it (its mandatory first tail segment).
+ *  2. Strongly prefer a candidate that CAN grow past 1 cell — a piece is
+ *     only left as a single cell when nothing present can grow at all. This
+ *     is what keeps the board reading as connected multi-segment lines
+ *     rather than a grid of individual tiles: the very first pick that
+ *     happens to be blocked behind it no longer forces a singleton the way
+ *     it used to.
+ *  3. Grow the tail past that mandatory first segment by bending freely to
+ *     any available neighbor, as long as the whole piece so far still
+ *     clears in the exit direction — this first segment is what makes the
+ *     arrow read as a genuine continuation of the piece's own line, not an
+ *     arbitrary slide direction unrelated to its shape.
+ *  4. Repeat until no present cell has any valid direction left.
+ *  5. Guaranteed fallback: any leftover cells (not observed in testing up
  *     to 12x18 boards, but kept as a safety net) become single-cell pieces
  *     in ascending ring order, each pointed toward its nearest edge —
  *     always valid, since the shortest path from any cell to its nearest
@@ -37,46 +48,54 @@ function buildPieces(cols: number, rows: number, rand: () => number): Piece[] {
   const pieces: Piece[] = [];
 
   while (true) {
-    const candidates: { cell: Coord; dirs: Direction[] }[] = [];
+    const growable: Candidate[] = [];
+    const singletonOnly: Candidate[] = [];
+    const tempId = -2;
+
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         if (!present[row][col]) continue;
-        const dirs = DIRECTIONS.filter((dir) => pieceCanExit(present, pieceIdGrid, -2, [{ row, col }], cols, rows, dir));
-        if (dirs.length > 0) candidates.push({ cell: { row, col }, dirs });
+        const dirs = DIRECTIONS.filter((dir) => pieceCanExit(present, pieceIdGrid, tempId, [{ row, col }], cols, rows, dir));
+        if (dirs.length === 0) continue;
+
+        const growDirs: Direction[] = [];
+        pieceIdGrid[row][col] = tempId; // so the mandatory cell's own sweep doesn't treat the head as foreign
+        for (const dir of dirs) {
+          const d = delta(dir);
+          const m: Coord = { row: row - d.row, col: col - d.col };
+          if (m.row < 0 || m.row >= rows || m.col < 0 || m.col >= cols || !present[m.row][m.col] || pieceIdGrid[m.row][m.col] !== -1) continue;
+          pieceIdGrid[m.row][m.col] = tempId;
+          if (pieceCanExit(present, pieceIdGrid, tempId, [{ row, col }, m], cols, rows, dir)) growDirs.push(dir);
+          pieceIdGrid[m.row][m.col] = -1;
+        }
+        pieceIdGrid[row][col] = -1;
+
+        const candidate: Candidate = { cell: { row, col }, dirs, growDirs };
+        (growDirs.length > 0 ? growable : singletonOnly).push(candidate);
       }
     }
-    if (candidates.length === 0) break;
+    if (growable.length === 0 && singletonOnly.length === 0) break;
 
-    const pick = candidates[Math.floor(rand() * candidates.length)];
-    const direction = pick.dirs[Math.floor(rand() * pick.dirs.length)];
+    const fromGrowable = growable.length > 0;
+    const pool = fromGrowable ? growable : singletonOnly;
+    const pick = pool[Math.floor(rand() * pool.length)];
     const id = pieces.length;
     const cells: Coord[] = [pick.cell];
     pieceIdGrid[pick.cell.row][pick.cell.col] = id;
 
     const targetLen = MIN_PIECE_LEN + Math.floor(rand() * (MAX_PIECE_LEN - MIN_PIECE_LEN + 1));
     let cur = pick.cell;
+    let direction = pick.dirs[Math.floor(rand() * pick.dirs.length)];
     let grewPastHead = false;
 
-    if (targetLen >= 2) {
+    if (fromGrowable && targetLen >= 2) {
+      direction = pick.growDirs[Math.floor(rand() * pick.growDirs.length)];
       const d = delta(direction);
       const mandatory: Coord = { row: pick.cell.row - d.row, col: pick.cell.col - d.col };
-      if (
-        mandatory.row >= 0 &&
-        mandatory.row < rows &&
-        mandatory.col >= 0 &&
-        mandatory.col < cols &&
-        present[mandatory.row][mandatory.col] &&
-        pieceIdGrid[mandatory.row][mandatory.col] === -1
-      ) {
-        pieceIdGrid[mandatory.row][mandatory.col] = id;
-        if (pieceCanExit(present, pieceIdGrid, id, [...cells, mandatory], cols, rows, direction)) {
-          cells.push(mandatory);
-          cur = mandatory;
-          grewPastHead = true;
-        } else {
-          pieceIdGrid[mandatory.row][mandatory.col] = -1;
-        }
-      }
+      pieceIdGrid[mandatory.row][mandatory.col] = id;
+      cells.push(mandatory);
+      cur = mandatory;
+      grewPastHead = true;
     }
 
     // Without that mandatory first segment, any further growth would place
