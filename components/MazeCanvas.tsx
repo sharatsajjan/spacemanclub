@@ -12,6 +12,8 @@ interface MazeCanvasProps {
 }
 
 const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180, left: 270 };
+const ARROW_PATH = "M0 -0.46 L0.23 -0.1 L0.07 -0.1 L0.07 0.42 L-0.07 0.42 L-0.07 -0.1 L-0.23 -0.1 Z";
+const ARROW_HALO_PATH = "M0 -0.55 L0.32 -0.02 L0.12 -0.02 L0.12 0.51 L-0.12 0.51 L-0.12 -0.02 L-0.32 -0.02 Z";
 
 /** The cell within a piece furthest along its own travel direction — where the arrowhead is drawn. */
 function headCellOf(piece: Piece) {
@@ -66,6 +68,31 @@ export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: M
         viewBox={`0 0 ${cols} ${rows}`}
         preserveAspectRatio="none"
       >
+        {/* Pass 1: every piece's background-colored halo, drawn first so no
+            halo can ever paint over another piece's already-drawn line —
+            this is what keeps touching pieces visually distinct as separate
+            tappable units without resorting to per-piece color. */}
+        {pieces.map((piece) => {
+          const head = headCellOf(piece);
+          const isPresent = present[head.row][head.col];
+          const points = piece.cells.map((cell) => `${cell.col + 0.5},${cell.row + 0.5}`).join(" ");
+          const rotation = ARROW_ROTATION[piece.direction];
+          const dots = piece.cells.filter((cell) => cell.row !== head.row || cell.col !== head.col);
+
+          return (
+            <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
+              <polyline points={points} fill="none" stroke="var(--maze)" strokeWidth={0.3} strokeLinecap="round" strokeLinejoin="round" />
+              {dots.map((cell, i) => (
+                <circle key={i} cx={cell.col + 0.5} cy={cell.row + 0.5} r={0.21} fill="var(--maze)" />
+              ))}
+              <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
+                <path d={ARROW_HALO_PATH} fill="var(--maze)" />
+              </g>
+            </g>
+          );
+        })}
+
+        {/* Pass 2: every piece's actual line, dots and arrowhead, on top of all halos. */}
         {pieces.map((piece) => {
           const head = headCellOf(piece);
           const isPresent = present[head.row][head.col];
@@ -73,17 +100,16 @@ export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: M
           const color = isFlashing ? "var(--danger)" : "var(--line)";
           const points = piece.cells.map((cell) => `${cell.col + 0.5},${cell.row + 0.5}`).join(" ");
           const rotation = ARROW_ROTATION[piece.direction];
+          const dots = piece.cells.filter((cell) => cell.row !== head.row || cell.col !== head.col);
 
           return (
             <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
               <polyline points={points} fill="none" stroke={color} strokeWidth={0.14} strokeLinecap="round" strokeLinejoin="round" />
-              {piece.cells
-                .filter((cell) => cell.row !== head.row || cell.col !== head.col)
-                .map((cell, i) => (
-                  <circle key={i} cx={cell.col + 0.5} cy={cell.row + 0.5} r={0.13} fill={color} />
-                ))}
+              {dots.map((cell, i) => (
+                <circle key={i} cx={cell.col + 0.5} cy={cell.row + 0.5} r={0.13} fill={color} />
+              ))}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
-                <path d="M0 -0.46 L0.23 -0.1 L0.07 -0.1 L0.07 0.42 L-0.07 0.42 L-0.07 -0.1 L-0.23 -0.1 Z" fill={color} />
+                <path d={ARROW_PATH} fill={color} />
               </g>
             </g>
           );
