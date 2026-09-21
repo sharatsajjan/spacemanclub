@@ -15,19 +15,21 @@ const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180,
 const ARROW_PATH = "M0 -0.46 L0.23 -0.1 L0.07 -0.1 L0.07 0.42 L-0.07 0.42 L-0.07 -0.1 L-0.23 -0.1 Z";
 const ARROW_HALO_PATH = "M0 -0.55 L0.32 -0.02 L0.12 -0.02 L0.12 0.51 L-0.12 0.51 L-0.12 -0.02 L-0.32 -0.02 Z";
 
-/** The cell within a piece furthest along its own travel direction — where the arrowhead is drawn. */
+/**
+ * Where the arrowhead is drawn: whichever of the piece's two true path ends
+ * (its first or last cell — every cell in between always has exactly 2
+ * neighbors within the piece, since it's a simple random-walk path) is
+ * further along the travel direction. Scanning every cell in the piece
+ * instead of just these two endpoints can land the arrowhead on a middle
+ * cell, making the piece look like it wrongly branches mid-line.
+ */
 function headCellOf(piece: Piece) {
   const d = delta(piece.direction);
-  let best = piece.cells[0];
-  let bestScore = best.row * d.row + best.col * d.col;
-  for (const cell of piece.cells) {
-    const score = cell.row * d.row + cell.col * d.col;
-    if (score > bestScore) {
-      bestScore = score;
-      best = cell;
-    }
-  }
-  return best;
+  const first = piece.cells[0];
+  const last = piece.cells[piece.cells.length - 1];
+  const firstScore = first.row * d.row + first.col * d.col;
+  const lastScore = last.row * d.row + last.col * d.col;
+  return lastScore >= firstScore ? last : first;
 }
 
 export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: MazeCanvasProps) {
