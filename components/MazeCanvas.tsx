@@ -16,7 +16,9 @@ const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180,
  * arrowhead, with its base sitting exactly at the cell center so it meets
  * the line's own (round-capped) end with no gap or visible seam. */
 const ARROW_PATH = "M0 -0.44 L0.26 0 L-0.26 0 Z";
+const ARROW_HALO_PATH = "M0 -0.5 L0.32 0.04 L-0.32 0.04 Z";
 const LINE_WIDTH = 0.34;
+const HALO_WIDTH = 0.46;
 const CORNER_RADIUS = 0.26;
 
 function normalize(dx: number, dy: number) {
@@ -101,11 +103,29 @@ export function MazeCanvas({ puzzle, present, flashPieceId, disabled, onTap }: M
         viewBox={`0 0 ${cols} ${rows}`}
         preserveAspectRatio="none"
       >
-        {/* Every piece: a thick, chunky pipe-like line (no dots — the reference
-            has none) capped with a solid flared arrowhead at the exit end. No
-            background halo/gap between pieces — each arrow always continues
-            its own line's real direction, so adjacent pieces flow together
-            seamlessly like the reference. */}
+        {/* Pass 1: every piece's background-colored halo, drawn first so no
+            halo can ever paint over another piece's already-drawn line. Two
+            pieces whose lines touch or run close together must never read as
+            one continuous shape — a player has to be able to tell, at a
+            glance, exactly which cells belong to which independent,
+            separately-tappable piece. */}
+        {pieces.map((piece) => {
+          const head = headCellOf(piece);
+          const isPresent = present[head.row][head.col];
+          const path = buildRoundedPath(piece.cells);
+          const rotation = ARROW_ROTATION[piece.direction];
+
+          return (
+            <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
+              {path && <path d={path} fill="none" stroke="var(--maze)" strokeWidth={HALO_WIDTH} strokeLinecap="round" strokeLinejoin="round" />}
+              <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
+                <path d={ARROW_HALO_PATH} fill="var(--maze)" />
+              </g>
+            </g>
+          );
+        })}
+
+        {/* Pass 2: every piece's actual thick pipe-like line and solid arrowhead. */}
         {pieces.map((piece) => {
           const head = headCellOf(piece);
           const isPresent = present[head.row][head.col];
