@@ -7,12 +7,15 @@ import { setTheme } from "@/lib/storage";
 import { ThemeStyle } from "@/components/ThemeStyle";
 import { ThemePicker } from "@/components/ThemePicker";
 import { BoltIcon, PaletteIcon, SettingsIcon } from "@/components/icons";
+import { PictureTile } from "@/components/PictureTile";
+import { PICTURES } from "@/lib/pictures";
 import { ThemeId } from "@/lib/types";
 
 export default function HomePage() {
   const router = useRouter();
   const { profile, hydrated, setProfile } = usePlayerProfile();
   const [showThemes, setShowThemes] = useState(false);
+  const collected = profile.collectedPictures ?? [];
 
   const handleThemeSelect = (id: ThemeId) => {
     setProfile((p) => setTheme(p, id));
@@ -33,9 +36,28 @@ export default function HomePage() {
             <span className="font-bold text-lg text-text">ArrowFlow</span>
           </div>
 
-          <div className="flex justify-center gap-8 mb-8">
+          <div className="flex justify-center gap-8 mb-6">
             <Stat label="Coins" value={hydrated ? profile.coins.toLocaleString() : "–"} />
             <Stat label="Stars" value={hydrated ? profile.totalStars.toLocaleString() : "–"} />
+            <Stat label="Found" value={hydrated ? `${collected.length}/${PICTURES.length}` : "–"} />
+          </div>
+
+          <div className="mb-6">
+            <div className="grid grid-cols-4 gap-2">
+              {PICTURES.map((picture) => {
+                const found = collected.includes(picture.id);
+                return (
+                  <div
+                    key={picture.id}
+                    className="aspect-square rounded-xl bg-maze flex items-center justify-center"
+                    style={found ? undefined : { opacity: 0.55 }}
+                    title={found ? picture.name : "Not found yet"}
+                  >
+                    <PictureTile picture={picture} size={38} locked={!found} />
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="flex-1 flex flex-col items-center justify-center gap-4">

@@ -8,6 +8,8 @@ import { applyLevelResult, grantLifeFromAd, loseLife } from "@/lib/storage";
 import { LevelResult, Puzzle } from "@/lib/types";
 import { ThemeStyle } from "@/components/ThemeStyle";
 import { MazeGameView } from "@/components/MazeGameView";
+import { PictureTile } from "@/components/PictureTile";
+import { getPicture } from "@/lib/pictures";
 import { PaletteIcon, SettingsIcon, TrophyIcon, StarIcon, WaterDropIcon } from "@/components/icons";
 
 type Phase = "loading" | "playing" | "complete" | "outOfLives";
@@ -25,6 +27,7 @@ export default function PlayPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
   const [result, setResult] = useState<LevelResult | null>(null);
+  const [isNewPicture, setIsNewPicture] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -53,7 +56,11 @@ export default function PlayPage() {
   const handleComplete = useCallback(
     (levelResult: LevelResult) => {
       setResult(levelResult);
-      setProfile((p) => applyLevelResult(p, levelResult).profile);
+      setProfile((p) => {
+        const outcome = applyLevelResult(p, levelResult);
+        setIsNewPicture(outcome.isNewPicture);
+        return outcome.profile;
+      });
       setPhase("complete");
     },
     [setProfile]
@@ -69,6 +76,8 @@ export default function PlayPage() {
       </>
     );
   }
+
+  const completedPicture = result?.pictureId ? getPicture(result.pictureId) : undefined;
 
   const startNextLevel = () => {
     const seed = Math.floor(Math.random() * 1_000_000_000);
@@ -118,13 +127,34 @@ export default function PlayPage() {
 
           {phase === "complete" && result && (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
-              <div
-                className="w-20 h-20 rounded-full flex items-center justify-center bg-maze"
-                style={{ border: "3px solid var(--accent3)", color: "var(--accent3)" }}
-              >
-                <TrophyIcon className="w-9 h-9" />
-              </div>
-              <h2 className="font-extrabold text-lg text-text">Level Complete!</h2>
+              {completedPicture ? (
+                <>
+                  <div className="rounded-2xl bg-maze p-4 flex items-center justify-center">
+                    <PictureTile picture={completedPicture} size={132} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-extrabold text-lg text-text">{completedPicture.name}</h2>
+                    {isNewPicture && (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide"
+                        style={{ background: "var(--accent3)", color: "var(--btn-text)" }}
+                      >
+                        New
+                      </span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div
+                    className="w-20 h-20 rounded-full flex items-center justify-center bg-maze"
+                    style={{ border: "3px solid var(--accent3)", color: "var(--accent3)" }}
+                  >
+                    <TrophyIcon className="w-9 h-9" />
+                  </div>
+                  <h2 className="font-extrabold text-lg text-text">Level Complete!</h2>
+                </>
+              )}
               <div className="flex gap-1" style={{ color: "var(--accent3)" }}>
                 {[1, 2, 3].map((n) => (
                   <StarIcon key={n} filled={n <= result.stars} className="w-6 h-6" />

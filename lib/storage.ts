@@ -16,6 +16,7 @@ export function defaultProfile(): PlayerProfile {
     nextLifeAt: null,
     theme: DEFAULT_THEME,
     playerName: "Player",
+    collectedPictures: [],
   };
 }
 
@@ -77,9 +78,11 @@ export function grantLifeFromAd(profile: PlayerProfile): PlayerProfile {
 export interface ApplyLevelOutcome {
   profile: PlayerProfile;
   isNewBest: boolean;
+  /** True when this level's picture had never been uncovered before. */
+  isNewPicture: boolean;
 }
 
-/** Folds a completed level's result into the profile: coins, stars, level progression. */
+/** Folds a completed level's result into the profile: coins, stars, level progression, pictures. */
 export function applyLevelResult(profile: PlayerProfile, result: LevelResult): ApplyLevelOutcome {
   const next: PlayerProfile = { ...profile };
   next.coins += result.coinsEarned;
@@ -90,8 +93,12 @@ export function applyLevelResult(profile: PlayerProfile, result: LevelResult): A
   if (isNewBest) next.bestLevelReached = result.level + 1;
   next.currentLevel = Math.max(next.currentLevel, result.level + 1);
 
+  const collected = next.collectedPictures ?? [];
+  const isNewPicture = !!result.pictureId && !collected.includes(result.pictureId);
+  next.collectedPictures = isNewPicture ? [...collected, result.pictureId!] : collected;
+
   saveProfile(next);
-  return { profile: next, isNewBest };
+  return { profile: next, isNewBest, isNewPicture };
 }
 
 export function setTheme(profile: PlayerProfile, theme: PlayerProfile["theme"]): PlayerProfile {

@@ -38,6 +38,9 @@ export interface LevelResult {
   elapsedMs: number;
   stars: 1 | 2 | 3;
   coinsEarned: number;
+  /** The picture uncovered by finishing this level, if the board was big
+   * enough to hide one. */
+  pictureId?: string;
 }
 
 export type ThemeId = "linen" | "slate" | "sage" | "dusk" | "ocean";
@@ -53,4 +56,6 @@ export interface PlayerProfile {
   nextLifeAt: number | null;
   theme: ThemeId;
   playerName: string;
+  /** Ids of pictures uncovered by finishing a level, in the order first found. */
+  collectedPictures: string[];
 }

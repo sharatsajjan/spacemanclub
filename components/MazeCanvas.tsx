@@ -7,6 +7,9 @@ import { delta } from "@/lib/rules";
 interface MazeCanvasProps {
   puzzle: Puzzle;
   present: boolean[][];
+  /** Colors hidden beneath the board, uncovered cell by cell as pieces
+   * clear. Null on boards too small to hold a picture. */
+  pictureLayer: (string | null)[][] | null;
   exitingPieces: Map<number, Direction>;
   flashPieceId: number | null;
   hintPieceId: number | null;
@@ -176,7 +179,7 @@ function slideTransform(cols: number, rows: number, exitDir: Direction): string 
 
 const EXIT_TRANSITION_STYLE: CSSProperties = { transition: EXIT_TRANSITION };
 
-export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
+export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
   const { cols, rows, pieces } = puzzle;
   const pieceColors = useMemo(() => assignPieceColors(pieces, cols, rows), [pieces, cols, rows]);
 
@@ -194,6 +197,7 @@ export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintP
       {Array.from({ length: rows }).flatMap((_, r) =>
         Array.from({ length: cols }).map((__, c) => {
           const isPresent = present[r][c];
+          const hidden = pictureLayer?.[r]?.[c] ?? null;
           return (
             <button
               key={`${r}-${c}`}
@@ -205,6 +209,14 @@ export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintP
               data-col={c}
               data-present={isPresent}
               className="relative"
+              // Revealed only once the covering piece is gone. The fade is
+              // slower than the piece's slide-out so the colour arrives
+              // just behind it rather than racing it off the board.
+              style={
+                hidden
+                  ? { backgroundColor: isPresent ? "transparent" : hidden, transition: "background-color 450ms ease-out" }
+                  : undefined
+              }
             />
           );
         })

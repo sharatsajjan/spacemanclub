@@ -1,6 +1,7 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { pictureForLevel, pictureLayerFor } from "@/lib/pictures";
 import { LevelResult, Puzzle } from "@/lib/types";
 import { useMazeGame } from "@/hooks/useMazeGame";
 import { computeLevelScore } from "@/lib/scoring";
@@ -38,6 +39,7 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
   // either stretching the cells or making the zoom steps mean nothing.
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [fittedWidth, setFittedWidth] = useState(0);
+  const pictureLayer = useMemo(() => pictureLayerFor(puzzle.level, puzzle.cols, puzzle.rows), [puzzle.level, puzzle.cols, puzzle.rows]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -71,6 +73,7 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
         elapsedMs: Date.now() - startedAtRef.current,
         stars,
         coinsEarned,
+        pictureId: pictureLayer ? pictureForLevel(puzzle.level).id : undefined,
       });
     },
   });
@@ -95,6 +98,7 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
           <MazeCanvas
             puzzle={puzzle}
             present={game.present}
+            pictureLayer={pictureLayer}
             exitingPieces={game.exitingPieces}
             flashPieceId={game.flashPieceId}
             hintPieceId={game.hintPieceId}
