@@ -16,6 +16,16 @@ export interface Picture {
   palette: Record<string, string>;
 }
 
+/**
+ * Master switch for the hidden-picture feature: the reveal under the
+ * board, the picture on the completion screen, and the gallery. Off means
+ * boards empty to plain background and nothing is collected — the sprites
+ * and all the wiring stay put, so flipping this back on restores the
+ * feature with no other change. Profiles keep any pictures already
+ * collected while it is off.
+ */
+export const PICTURES_ENABLED = false;
+
 export const PICTURE_WIDTH = 9;
 export const PICTURE_HEIGHT = 9;
 
@@ -182,6 +192,7 @@ export function pictureForLevel(level: number): Picture {
  * than a reward.
  */
 export function pictureLayerFor(level: number, cols: number, rows: number): (string | null)[][] | null {
+  if (!PICTURES_ENABLED) return null;
   if (cols < PICTURE_WIDTH || rows < PICTURE_HEIGHT) return null;
   const picture = pictureForLevel(level);
   const offsetCol = Math.floor((cols - PICTURE_WIDTH) / 2);
