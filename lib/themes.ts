@@ -17,6 +17,15 @@ export interface Theme {
   btnText: string;
   chip: string;
   danger: string;
+  /**
+   * Colors the pieces are drawn in. Adjacent pieces are always given
+   * different entries (see assignPieceColors), so a board of 80-odd pieces
+   * reads as separate shapes instead of one flat mass — with everything in
+   * a single color you can't tell where one piece stops and the next
+   * starts without tracing it. Each palette stays inside its theme's own
+   * range so the board still looks like one picture.
+   */
+  piecePalette: string[];
 }
 
 export const THEMES: Theme[] = [
@@ -37,6 +46,7 @@ export const THEMES: Theme[] = [
     btnText: "#fdf6ea",
     chip: "rgba(90,60,30,0.08)",
     danger: "#c0483f",
+    piecePalette: ["#8a5a2f", "#b0743a", "#a35c52", "#7d7a45", "#6f7f66", "#9c6a80"],
   },
   {
     id: "slate",
@@ -55,6 +65,7 @@ export const THEMES: Theme[] = [
     btnText: "#1b1a2e",
     chip: "rgba(201,168,106,0.14)",
     danger: "#e08c93",
+    piecePalette: ["#c9a86a", "#e0a06a", "#e08c93", "#8fb6e0", "#89c9a8", "#b9a0d9"],
   },
   {
     id: "sage",
@@ -73,6 +84,7 @@ export const THEMES: Theme[] = [
     btnText: "#f4f7ec",
     chip: "rgba(60,90,45,0.1)",
     danger: "#a35c52",
+    piecePalette: ["#4f6b3f", "#6f9150", "#8a6b3f", "#3f7a6b", "#a35c52", "#5f7a8a"],
   },
   {
     id: "dusk",
@@ -91,6 +103,7 @@ export const THEMES: Theme[] = [
     btnText: "#fbf1f4",
     chip: "rgba(122,74,92,0.1)",
     danger: "#a35c52",
+    piecePalette: ["#7a4a5c", "#a3527a", "#a35c52", "#8a6b3f", "#6b5c8a", "#4f7a85"],
   },
   {
     id: "ocean",
@@ -109,6 +122,7 @@ export const THEMES: Theme[] = [
     btnText: "#eef7f7",
     chip: "rgba(47,107,110,0.1)",
     danger: "#a35c52",
+    piecePalette: ["#2f6b6e", "#3f8a8f", "#4a7fa5", "#5c8a52", "#c9843b", "#a35c52"],
   },
 ];
 

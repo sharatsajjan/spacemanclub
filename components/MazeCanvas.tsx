@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useMemo, type CSSProperties } from "react";
 import { Coord, Direction, Piece, Puzzle } from "@/lib/types";
 import { delta } from "@/lib/rules";
 
@@ -46,6 +46,58 @@ const SINGLE_CELL_FILL = 0.24;
 const SINGLE_CELL_HALO_FILL = 0.36;
 /** Fixed amber/gold, independent of theme — same role as the always-red danger flash. */
 const HINT_COLOR = "#e0983d";
+/** Must match the length of every theme's piecePalette. */
+const PALETTE_SIZE = 6;
+
+/**
+ * Greedy graph coloring over the pieces: two pieces that touch anywhere on
+ * the board never get the same color, so every piece reads as its own shape.
+ * Deterministic in piece id, so a board looks the same every time it's
+ * drawn. Falls back to cycling ids if a piece somehow has more distinct
+ * neighbours than there are colors, which a grid can't actually produce —
+ * four colors suffice for any planar map, and there are six here.
+ */
+function assignPieceColors(pieces: Piece[], cols: number, rows: number): number[] {
+  const ownerAt: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
+  for (const piece of pieces) {
+    for (const cell of piece.cells) ownerAt[cell.row][cell.col] = piece.id;
+  }
+
+  const neighbours: Set<number>[] = pieces.map(() => new Set<number>());
+  for (const piece of pieces) {
+    for (const cell of piece.cells) {
+      for (const dir of ["up", "down", "left", "right"] as Direction[]) {
+        const d = delta(dir);
+        const r = cell.row + d.row;
+        const c = cell.col + d.col;
+        if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+        const other = ownerAt[r][c];
+        if (other !== -1 && other !== piece.id) neighbours[piece.id].add(other);
+      }
+    }
+  }
+
+  const colors = new Array(pieces.length).fill(-1);
+  const usage = new Array(PALETTE_SIZE).fill(0);
+  for (const piece of pieces) {
+    const taken = new Set<number>();
+    for (const n of neighbours[piece.id]) {
+      if (colors[n] !== -1) taken.add(colors[n]);
+    }
+    // Least-used free color rather than lowest-numbered: always taking the
+    // first free index leaves the tail of the palette barely used, and the
+    // board ends up looking like two colors with occasional accents.
+    let pick = -1;
+    for (let i = 0; i < PALETTE_SIZE; i++) {
+      if (taken.has(i)) continue;
+      if (pick === -1 || usage[i] < usage[pick]) pick = i;
+    }
+    if (pick === -1) pick = piece.id % PALETTE_SIZE;
+    colors[piece.id] = pick;
+    usage[pick]++;
+  }
+  return colors;
+}
 
 function normalize(dx: number, dy: number) {
   const len = Math.hypot(dx, dy) || 1;
@@ -126,6 +178,7 @@ const EXIT_TRANSITION_STYLE: CSSProperties = { transition: EXIT_TRANSITION };
 
 export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
   const { cols, rows, pieces } = puzzle;
+  const pieceColors = useMemo(() => assignPieceColors(pieces, cols, rows), [pieces, cols, rows]);
 
   return (
     <div
@@ -211,7 +264,7 @@ export function MazeCanvas({ puzzle, present, exitingPieces, flashPieceId, hintP
           if (!isPresent && !exitDir) return null;
           const isFlashing = flashPieceId === piece.id;
           const isHinted = hintPieceId === piece.id;
-          const color = isFlashing ? "var(--danger)" : isHinted ? HINT_COLOR : "var(--line)";
+          const color = isFlashing ? "var(--danger)" : isHinted ? HINT_COLOR : `var(--piece-${pieceColors[piece.id]})`;
           const path = buildPiecePath(piece, head);
           const rotation = ARROW_ROTATION[piece.direction];
 

@@ -23,6 +23,7 @@ export function ThemeStyle({ themeId }: { themeId: ThemeId }) {
     root.setProperty("--btn-text", theme.btnText);
     root.setProperty("--chip", theme.chip);
     root.setProperty("--danger", theme.danger);
+    theme.piecePalette.forEach((color, i) => root.setProperty(`--piece-${i}`, color));
   }, [themeId]);
 
   return null;
