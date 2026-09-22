@@ -253,19 +253,21 @@ function buildSpiralPieces(
       const path = longestContiguousRun(layout, present);
       if (path.length < 2) continue;
 
-      const ends: Direction[] = [];
+      // Either end of the path can lead. Whichever does becomes cells[0],
+      // since that's the end the exit check and the arrowhead both read.
+      const ends: { dir: Direction; cells: Coord[] }[] = [];
       const startTangent = directionFromDelta(directionBetween(path[1], path[0]));
-      if (startTangent) ends.push(startTangent);
+      if (startTangent) ends.push({ dir: startTangent, cells: path });
       const endTangent = directionFromDelta(directionBetween(path[path.length - 2], path[path.length - 1]));
-      if (endTangent) ends.push(endTangent);
+      if (endTangent) ends.push({ dir: endTangent, cells: [...path].reverse() });
 
       for (const c of path) pieceIdGrid[c.row][c.col] = tempId;
       let placed = false;
-      for (const dir of shuffle(ends, rand)) {
-        if (pieceCanExit(present, pieceIdGrid, tempId, path, cols, rows, dir)) {
+      for (const end of shuffle(ends, rand)) {
+        if (pieceCanExit(present, pieceIdGrid, tempId, end.cells, cols, rows, end.dir)) {
           const id = pieces.length;
           for (const c of path) pieceIdGrid[c.row][c.col] = id;
-          pieces.push({ id, cells: path, direction: dir });
+          pieces.push({ id, cells: end.cells, direction: end.dir });
           for (const c of path) present[c.row][c.col] = false;
           placed = true;
           placedAny = true;

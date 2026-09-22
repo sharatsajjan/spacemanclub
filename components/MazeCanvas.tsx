@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type CSSProperties } from "react";
+import { useMemo } from "react";
 import { Coord, Direction, Piece, Puzzle } from "@/lib/types";
 import { delta } from "@/lib/rules";
 
@@ -18,7 +18,8 @@ interface MazeCanvasProps {
 }
 
 /** Must stay in sync with EXIT_ANIMATION_MS in useMazeGame.ts. */
-const EXIT_TRANSITION = "transform 380ms cubic-bezier(0.4, 0, 1, 1)";
+const EXIT_ANIMATION_MS = 380;
+const EXIT_EASING = "cubic-bezier(0.4, 0, 1, 1)";
 
 const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180, left: 270 };
 /** Solid filled arrow cap. Its apex reaches almost to the cell's true outer
@@ -153,31 +154,127 @@ function buildPiecePath(piece: Piece, headCell: Coord): string {
 }
 
 /**
- * Where the arrowhead is drawn: whichever of the piece's two true path ends
- * (its first or last cell — every cell in between always has exactly 2
- * neighbors within the piece, since it's a simple random-walk path) is
- * further along the travel direction. Scanning every cell in the piece
- * instead of just these two endpoints can land the arrowhead on a middle
- * cell, making the piece look like it wrongly branches mid-line.
+ * The arrowhead goes on cells[0]. Every piece is built head-first, and the
+ * exit check reads the same cell, so what the player sees leading the way
+ * out is what actually has to have a clear lane. This used to be inferred
+ * by comparing the two endpoints against the travel direction, which was
+ * fine when the whole shape had to slide as one but would now be guessing
+ * at the one cell the rule depends on.
  */
 function headCellOf(piece: Piece) {
-  const d = delta(piece.direction);
-  const first = piece.cells[0];
-  const last = piece.cells[piece.cells.length - 1];
-  const firstScore = first.row * d.row + first.col * d.col;
-  const lastScore = last.row * d.row + last.col * d.col;
-  return lastScore >= firstScore ? last : first;
+  return piece.cells[0];
 }
 
-/** Slide offset in viewBox units, far enough to clear the board on either axis. */
-function slideTransform(cols: number, rows: number, exitDir: Direction): string {
-  const d = delta(exitDir);
-  const tx = d.col * (cols + 2);
-  const ty = d.row * (rows + 2);
-  return `translate(${tx} ${ty})`;
+/**
+ * The route a leaving piece takes: straight out from its head to past the
+ * board edge, then back down its own line to the tail. Drawn as one path so
+ * the body can be walked along it — the extension and the piece's first
+ * segment are collinear (the head's tangent is the exit direction by
+ * construction), so the join is a straight line, not a corner.
+ */
+function buildExitPath(piece: Piece, cols: number, rows: number): { d: string; runOut: number; bodyLength: number } {
+  const head = piece.cells[0];
+  const dir = delta(piece.direction);
+  const edgeDistance =
+    piece.direction === "up"
+      ? head.row + 0.5
+      : piece.direction === "down"
+        ? rows - head.row - 0.5
+        : piece.direction === "left"
+          ? head.col + 0.5
+          : cols - head.col - 0.5;
+  // Far enough that the arrowhead is past the edge before the body follows.
+  const runOut = edgeDistance + 1;
+
+  const exitPoint = {
+    x: head.col + 0.5 + dir.col * runOut,
+    y: head.row + 0.5 + dir.row * runOut,
+  };
+  const body = buildPiecePath(piece, head);
+  // Rounded corners shave a little off the true length; padding keeps the
+  // drawn body from falling short of its own tail.
+  const bodyLength = piece.cells.length - 1 + TAIL_EXTEND + 0.4;
+
+  return { d: `M${exitPoint.x} ${exitPoint.y} ${body.replace(/^M/, "L")}`, runOut, bodyLength };
 }
 
-const EXIT_TRANSITION_STYLE: CSSProperties = { transition: EXIT_TRANSITION };
+/**
+ * A piece threading out along its own route. The whole route is drawn as
+ * one path and a dash the length of the body is walked along it, from where
+ * the body currently sits to past the start (the exit point) — which reads
+ * as the piece following its own line out, head first.
+ *
+ * Driven by the Web Animations API off a ref rather than a CSS transition:
+ * a transition needs the element to render once at its starting offset and
+ * again at its end, and this element only exists for the length of the
+ * animation.
+ */
+function ExitingPiece({
+  piece,
+  cols,
+  rows,
+  color,
+  width,
+  rotation,
+  arrowPath,
+}: {
+  piece: Piece;
+  cols: number;
+  rows: number;
+  color: string;
+  width: number;
+  rotation: number;
+  arrowPath: string;
+}) {
+  const { d, runOut, bodyLength } = buildExitPath(piece, cols, rows);
+  const head = piece.cells[0];
+  const dir = delta(piece.direction);
+  const travel = runOut + bodyLength;
+
+  const startAnimation = (node: SVGPathElement | null) => {
+    if (!node) return;
+    node.animate([{ strokeDashoffset: -runOut }, { strokeDashoffset: bodyLength }], {
+      duration: EXIT_ANIMATION_MS,
+      easing: EXIT_EASING,
+      fill: "forwards",
+    });
+  };
+
+  const startArrow = (node: SVGGElement | null) => {
+    if (!node) return;
+    // The head runs straight out along the extension, so the arrowhead just
+    // travels in the exit direction. It is off the board long before the
+    // body finishes, which is why it can keep going past the edge. Lengths
+    // are in px because that is what the animation API accepts here, and on
+    // an SVG element a px resolves to one user unit — the same units as the
+    // viewBox, not screen pixels.
+    node.animate(
+      [{ transform: "translate(0px, 0px)" }, { transform: `translate(${dir.col * travel}px, ${dir.row * travel}px)` }],
+      { duration: EXIT_ANIMATION_MS, easing: EXIT_EASING, fill: "forwards" }
+    );
+  };
+
+  return (
+    <g>
+      <path
+        ref={startAnimation}
+        d={d}
+        fill="none"
+        stroke={color}
+        strokeWidth={width}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={`${bodyLength} ${travel + bodyLength}`}
+        strokeDashoffset={-runOut}
+      />
+      <g ref={startArrow}>
+        <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
+          <path d={arrowPath} fill={color} />
+        </g>
+      </g>
+    </g>
+  );
+}
 
 export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
   const { cols, rows, pieces } = puzzle;
@@ -241,12 +338,23 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
           const path = buildPiecePath(piece, head);
           const rotation = ARROW_ROTATION[piece.direction];
 
+          if (exitDir) {
+            return (
+              <ExitingPiece
+                key={`${piece.id}-exit`}
+                piece={piece}
+                cols={cols}
+                rows={rows}
+                color="var(--maze)"
+                width={HALO_WIDTH}
+                rotation={rotation}
+                arrowPath={ARROW_HALO_PATH}
+              />
+            );
+          }
+
           return (
-            <g
-              key={piece.id}
-              transform={exitDir ? slideTransform(cols, rows, exitDir) : undefined}
-              style={exitDir ? EXIT_TRANSITION_STYLE : { opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
-            >
+            <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
               {path ? (
                 <path d={path} fill="none" stroke="var(--maze)" strokeWidth={HALO_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
               ) : (
@@ -280,12 +388,26 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
           const path = buildPiecePath(piece, head);
           const rotation = ARROW_ROTATION[piece.direction];
 
+          if (exitDir) {
+            return (
+              <ExitingPiece
+                key={`${piece.id}-exit`}
+                piece={piece}
+                cols={cols}
+                rows={rows}
+                color={color}
+                width={LINE_WIDTH}
+                rotation={rotation}
+                arrowPath={ARROW_PATH}
+              />
+            );
+          }
+
           return (
             <g
               key={piece.id}
               className={isHinted ? "animate-pulse" : undefined}
-              transform={exitDir ? slideTransform(cols, rows, exitDir) : undefined}
-              style={exitDir ? EXIT_TRANSITION_STYLE : { opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
+              style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
             >
               {path ? (
                 <path d={path} fill="none" stroke={color} strokeWidth={LINE_WIDTH} strokeLinecap="round" strokeLinejoin="round" />

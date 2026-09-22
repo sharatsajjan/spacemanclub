@@ -24,11 +24,16 @@ export function inBounds(cols: number, rows: number, c: Coord): boolean {
 }
 
 /**
- * Whether a piece can clear right now: sweeping every one of its own cells
- * in `dir` must reach the board edge without passing through a cell that
- * belongs to a DIFFERENT, still-present piece. A piece's own cells never
- * block its own sweep since the whole piece moves together as one rigid
- * body.
+ * Whether a piece can clear right now. A piece leaves by threading along
+ * its own line, head first: the head travels straight out in `dir` and each
+ * segment behind it follows into the cell the one ahead just vacated. So
+ * the only ground the piece covers that it doesn't already occupy is the
+ * straight lane from its head to the board edge — that lane is what has to
+ * be free of other still-present pieces, however many times the body bends.
+ *
+ * `cells[0]` is the head. Every piece is built that way (see
+ * mazeGenerator), and the arrowhead is drawn there, so the end the player
+ * sees pointing the way out is the same end this checks from.
  */
 export function pieceCanExit(
   present: boolean[][],
@@ -39,15 +44,15 @@ export function pieceCanExit(
   rows: number,
   dir: Direction
 ): boolean {
+  const head = cells[0];
+  if (!head) return true;
   const d = delta(dir);
-  for (const cell of cells) {
-    let r = cell.row + d.row;
-    let c = cell.col + d.col;
-    while (r >= 0 && r < rows && c >= 0 && c < cols) {
-      if (present[r][c] && pieceIdGrid[r][c] !== pieceId) return false;
-      r += d.row;
-      c += d.col;
-    }
+  let r = head.row + d.row;
+  let c = head.col + d.col;
+  while (r >= 0 && r < rows && c >= 0 && c < cols) {
+    if (present[r][c] && pieceIdGrid[r][c] !== pieceId) return false;
+    r += d.row;
+    c += d.col;
   }
   return true;
 }
