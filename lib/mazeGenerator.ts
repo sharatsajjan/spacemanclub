@@ -61,6 +61,11 @@ function manhattan(a: Coord, b: Coord): number {
  * independent way out. */
 const GROWTH_LOCALITY_RADIUS = 2;
 
+/** Share of spiral blocks left oversized, to become long nested coils. */
+const FEATURE_BLOCK_CHANCE = 0.18;
+/** Share of blocks laid out as a comb rather than a coil. */
+const SERPENTINE_CHANCE = 0.4;
+
 function directionFromDelta(d: Coord): Direction | null {
   if (d.row === -1 && d.col === 0) return "up";
   if (d.row === 1 && d.col === 0) return "down";
@@ -100,6 +105,25 @@ function spiralPathThroughRegion(top: number, left: number, h: number, w: number
     bottom0--;
     left0++;
     right0--;
+  }
+  return path;
+}
+
+/**
+ * A serpentine (boustrophedon) path through every cell of a rectangle:
+ * across the top row, drop a row, back the other way, and so on. Same
+ * coverage guarantee as the spiral, but it reads as a comb rather than a
+ * coil — alternating between the two stops blocks of the same size from
+ * all producing the same shape. (For a 2-wide block the two are
+ * identical, so this only changes anything once a block is 3x3 or bigger.)
+ */
+function serpentinePathThroughRegion(top: number, left: number, h: number, w: number): Coord[] {
+  const path: Coord[] = [];
+  for (let r = 0; r < h; r++) {
+    for (let i = 0; i < w; i++) {
+      const c = (r & 1) === 0 ? i : w - 1 - i;
+      path.push({ row: top + r, col: left + c });
+    }
   }
   return path;
 }
@@ -147,7 +171,11 @@ function partitionIntoBlocks(
   const canSplitHorizontally = h >= 4;
   // Randomised stopping size, so leaves range from a 4-cell hook up to a
   // 12-cell coil instead of the whole board being the same U repeated.
-  const stopAt = targetCells * (1 + rand() * 1.6);
+  // Occasionally a block is left much larger, which becomes one long
+  // nested coil — a board of nothing but small blocks reads as the same
+  // hook stamped out in rows however the colours fall, and those bigger
+  // shapes are what break the pattern up.
+  const stopAt = rand() < FEATURE_BLOCK_CHANCE ? targetCells * (3 + rand() * 2) : targetCells * (1 + rand() * 1.2);
   if (h * w <= stopAt || (!canSplitVertically && !canSplitHorizontally)) {
     out.push({ top, left, h, w });
     return;
@@ -218,7 +246,11 @@ function buildSpiralPieces(
       // consumed cell out of the middle would leave the remaining cells
       // non-adjacent, and a piece whose consecutive cells aren't neighbours
       // draws as a line jumping diagonally across the board.
-      const path = longestContiguousRun(spiralPathThroughRegion(region.top, region.left, region.h, region.w), present);
+      const layout =
+        rand() < SERPENTINE_CHANCE
+          ? serpentinePathThroughRegion(region.top, region.left, region.h, region.w)
+          : spiralPathThroughRegion(region.top, region.left, region.h, region.w);
+      const path = longestContiguousRun(layout, present);
       if (path.length < 2) continue;
 
       const ends: Direction[] = [];
