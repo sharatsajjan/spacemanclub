@@ -54,10 +54,10 @@ interface Complexity {
  * breather in the difficulty wave.
  */
 const COMPLEXITY_BY_TIER: Record<DifficultyTier, Complexity> = {
-  Easy: { minLen: 10, maxLen: 24, turnBias: 0.35, spiralCoverage: 0.3, spiralRegionCells: 16, dependencyBias: 0.75 },
-  Medium: { minLen: 18, maxLen: 40, turnBias: 0.6, spiralCoverage: 0.3, spiralRegionCells: 25, dependencyBias: 0.9 },
-  Hard: { minLen: 24, maxLen: 56, turnBias: 0.75, spiralCoverage: 0.32, spiralRegionCells: 34, dependencyBias: 0.97 },
-  Hardest: { minLen: 28, maxLen: 70, turnBias: 0.85, spiralCoverage: 0.35, spiralRegionCells: 42, dependencyBias: 1 },
+  Easy: { minLen: 6, maxLen: 14, turnBias: 0.35, spiralCoverage: 0.3, spiralRegionCells: 16, dependencyBias: 0.75 },
+  Medium: { minLen: 8, maxLen: 18, turnBias: 0.6, spiralCoverage: 0.3, spiralRegionCells: 25, dependencyBias: 0.9 },
+  Hard: { minLen: 9, maxLen: 22, turnBias: 0.75, spiralCoverage: 0.32, spiralRegionCells: 34, dependencyBias: 0.97 },
+  Hardest: { minLen: 10, maxLen: 26, turnBias: 0.85, spiralCoverage: 0.35, spiralRegionCells: 42, dependencyBias: 1 },
 };
 
 function directionBetween(from: Coord, to: Coord): Coord {
