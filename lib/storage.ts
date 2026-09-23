@@ -75,6 +75,13 @@ export function grantLifeFromAd(profile: PlayerProfile): PlayerProfile {
   return next;
 }
 
+/** Adds bonus coins, e.g. the "double your coins" rewarded ad on the level-complete screen. */
+export function grantCoins(profile: PlayerProfile, amount: number): PlayerProfile {
+  const next = { ...profile, coins: profile.coins + amount };
+  saveProfile(next);
+  return next;
+}
+
 export interface ApplyLevelOutcome {
   profile: PlayerProfile;
   isNewBest: boolean;

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayerProfile } from "@/hooks/usePlayerProfile";
 import { generatePuzzleForLevel } from "@/lib/mazeGenerator";
-import { applyLevelResult, grantLifeFromAd, loseLife } from "@/lib/storage";
+import { applyLevelResult, grantCoins, grantLifeFromAd, loseLife } from "@/lib/storage";
+import { rewardedAdsAvailable, showBetweenLevelsAd, showRewardedAd } from "@/lib/ads";
 import { LevelResult, Puzzle } from "@/lib/types";
 import { ThemeStyle } from "@/components/ThemeStyle";
 import { MazeGameView } from "@/components/MazeGameView";
@@ -29,6 +30,12 @@ export default function PlayPage() {
   const [result, setResult] = useState<LevelResult | null>(null);
   const [isNewPicture, setIsNewPicture] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  /** True while an ad is on screen or loading, so its button can't be tapped twice. */
+  const [adBusy, setAdBusy] = useState(false);
+  const [coinsDoubled, setCoinsDoubled] = useState(false);
+  // Read after hydration: the mode can depend on ?ads= in the URL.
+  const [canOfferRewarded, setCanOfferRewarded] = useState(false);
+  useEffect(() => setCanOfferRewarded(rewardedAdsAvailable()), []);
 
   useEffect(() => {
     if (!hydrated || puzzle) return;
@@ -79,15 +86,47 @@ export default function PlayPage() {
 
   const completedPicture = result?.pictureId ? getPicture(result.pictureId) : undefined;
 
-  const startNextLevel = () => {
+  const startNextLevel = async () => {
+    if (adBusy) return;
+    setAdBusy(true);
+    try {
+      if (result) await showBetweenLevelsAd(result.level);
+    } finally {
+      setAdBusy(false);
+    }
     const seed = Math.floor(Math.random() * 1_000_000_000);
     setPuzzle(generatePuzzleForLevel(profile.currentLevel, seed));
     setResult(null);
+    setCoinsDoubled(false);
     setPhase(profile.lives > 0 ? "playing" : "outOfLives");
   };
 
-  const watchAdForLife = () => {
-    setProfile((p) => grantLifeFromAd(p));
+  const watchAdForLife = async () => {
+    if (adBusy) return;
+    // With ads off the button keeps its old behaviour: a free life.
+    if (!rewardedAdsAvailable()) {
+      setProfile((p) => grantLifeFromAd(p));
+      return;
+    }
+    setAdBusy(true);
+    try {
+      if (await showRewardedAd("extra_life")) setProfile((p) => grantLifeFromAd(p));
+    } finally {
+      setAdBusy(false);
+    }
+  };
+
+  const watchAdToDoubleCoins = async () => {
+    if (adBusy || coinsDoubled || !result) return;
+    setAdBusy(true);
+    try {
+      if (await showRewardedAd("double_coins")) {
+        setProfile((p) => grantCoins(p, result.coinsEarned));
+        setCoinsDoubled(true);
+      }
+    } finally {
+      setAdBusy(false);
+    }
   };
 
   return (
@@ -161,12 +200,23 @@ export default function PlayPage() {
                 ))}
               </div>
               <div className="flex gap-3 mt-1">
-                <StatChip value={`+${result.coinsEarned}`} label="Coins" />
+                <StatChip value={`+${coinsDoubled ? result.coinsEarned * 2 : result.coinsEarned}`} label="Coins" />
                 <StatChip value={formatCountdown(result.elapsedMs)} label="Time" />
               </div>
+              {canOfferRewarded && result.coinsEarned > 0 && !coinsDoubled && (
+                <button
+                  onClick={watchAdToDoubleCoins}
+                  disabled={adBusy}
+                  className="w-full rounded-2xl py-3 font-bold text-sm mt-3 bg-maze text-accent disabled:opacity-50"
+                  style={{ border: "2px solid var(--accent)" }}
+                >
+                  Watch ad: double coins (+{result.coinsEarned})
+                </button>
+              )}
               <button
                 onClick={startNextLevel}
-                className="w-full rounded-2xl py-3 font-bold text-sm mt-3"
+                disabled={adBusy}
+                className="w-full rounded-2xl py-3 font-bold text-sm mt-3 disabled:opacity-50"
                 style={{ background: "var(--accent)", color: "var(--btn-text)" }}
               >
                 Level {puzzle.level + 1} &rarr;
@@ -193,7 +243,8 @@ export default function PlayPage() {
               )}
               <button
                 onClick={watchAdForLife}
-                className="w-full rounded-2xl py-3 font-bold text-sm mt-2"
+                disabled={adBusy}
+                className="w-full rounded-2xl py-3 font-bold text-sm mt-2 disabled:opacity-50"
                 style={{ background: "var(--accent)", color: "var(--btn-text)" }}
               >
                 Watch ad for +1 life

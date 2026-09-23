@@ -48,3 +48,30 @@ npm run dev
 ```
 
 Open http://localhost:3000.
+
+## Ads
+
+All ad calls go through `lib/ads.ts`; the game screens only ask for "the
+between-levels ad" or "a rewarded ad, did they earn it?".
+
+| Placement | Type | When |
+|---|---|---|
+| Tapping **Level N →** after a win | Interstitial | From level 3 on; at most one per 30s |
+| **Watch ad: double coins** on the win screen | Rewarded (opt-in) | Once per level |
+| **Watch ad for +1 life** when out of lives | Rewarded (opt-in) | Any time |
+
+Every ad call gives up after 3s if nothing loads, so a player is never stuck.
+
+Environment variables (set in Vercel → Project → Settings → Environment Variables):
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_ADSENSE_CLIENT` | Your AdSense publisher ID, `ca-pub-…`. Turns on AdSense H5 Games Ads and `/ads.txt` + `/app-ads.txt`. |
+| `NEXT_PUBLIC_ADSENSE_TEST` | `on` to serve AdSense test ads (before approval / on previews). |
+| `NEXT_PUBLIC_ADS_MODE` | Optional override: `adsense`, `mock` or `off`. |
+| `NEXT_PUBLIC_CONTACT_EMAIL` | Shown on `/privacy`. |
+
+With none set, ads are **off** and the game behaves as before (the +1 life
+button grants a free life). To try the flow on any deploy without an ad
+account, open it with `?ads=mock` — a fake full-screen ad is shown instead
+(`?ads=off` switches it back for that tab).

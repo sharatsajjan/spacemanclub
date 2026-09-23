@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePlayerProfile } from "@/hooks/usePlayerProfile";
 import { setTheme } from "@/lib/storage";
+import { rememberAdModeFromUrl } from "@/lib/ads";
 import { ThemeStyle } from "@/components/ThemeStyle";
 import { ThemePicker } from "@/components/ThemePicker";
 import { BoltIcon, PaletteIcon, SettingsIcon } from "@/components/icons";
@@ -16,6 +18,8 @@ export default function HomePage() {
   const { profile, hydrated, setProfile } = usePlayerProfile();
   const [showThemes, setShowThemes] = useState(false);
   const collected = profile.collectedPictures ?? [];
+
+  useEffect(() => rememberAdModeFromUrl(), []);
 
   const handleThemeSelect = (id: ThemeId) => {
     setProfile((p) => setTheme(p, id));
@@ -96,6 +100,9 @@ export default function HomePage() {
               <SettingsIcon className="w-4 h-4" />
             </IconButton>
           </div>
+          <Link href="/privacy" className="self-center mt-4 text-[11px] text-sub2">
+            Privacy Policy
+          </Link>
         </div>
       </main>
     </>
