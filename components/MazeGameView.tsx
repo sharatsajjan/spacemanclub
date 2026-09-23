@@ -20,6 +20,32 @@ interface MazeGameViewProps {
 const ZOOM_STEPS = [1, 1.5, 2.25];
 
 /**
+ * The smallest a cell is ever drawn, in CSS pixels. Shrinking the whole
+ * board to fit the screen works while boards are small, but past a certain
+ * size it just makes every cell smaller — a late board and a mid board end
+ * up occupying the same rectangle, only harder to read and to hit. Below
+ * this size the board stops shrinking and starts scrolling instead, so the
+ * canvas grows with the puzzle.
+ */
+const MIN_CELL_PX = 34;
+
+/**
+ * How wide to draw the board, given the space available.
+ *
+ * Small boards fit entirely, on both axes, so the player can see the whole
+ * puzzle at once. Once fitting would push cells below MIN_CELL_PX the board
+ * fills the frame's width instead and runs off the bottom, scrolling — much
+ * better than the same board squeezed into the same rectangle with tiny
+ * cells. And if even the full width can't give cells a usable size, the
+ * board goes wider than the frame and pans sideways too.
+ */
+export function boardWidthFor(frameWidth: number, frameHeight: number, cols: number, rows: number): number {
+  const fitBothAxes = Math.min(frameWidth, (frameHeight * cols) / rows);
+  if (fitBothAxes / cols >= MIN_CELL_PX) return fitBothAxes;
+  return Math.max(frameWidth, cols * MIN_CELL_PX);
+}
+
+/**
  * Owns one level's play session. Must be mounted with `key={puzzle.id}` by
  * the caller — a fresh mount per puzzle keeps this component's internal
  * game state (via useMazeGame) always in sync with `puzzle`'s own
@@ -32,11 +58,11 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
   const [zoomStep, setZoomStep] = useState(0);
   const zoom = ZOOM_STEPS[zoomStep];
 
-  // The board's width is computed rather than left to CSS: it has to fit
-  // whichever axis binds (a tall board is height-bound, a wide one
-  // width-bound) while keeping cells square, and zoom has to scale that
-  // fitted size — expressing all three as CSS constraints at once ends up
-  // either stretching the cells or making the zoom steps mean nothing.
+  // The board's width is computed rather than left to CSS: it depends on
+  // whether the whole board still fits at a usable cell size, and zoom has
+  // to scale whatever that resolves to — expressing it as CSS constraints
+  // ends up either stretching the cells or making the zoom steps mean
+  // nothing.
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [fittedWidth, setFittedWidth] = useState(0);
   const pictureLayer = useMemo(() => pictureLayerFor(puzzle.level, puzzle.cols, puzzle.rows), [puzzle.level, puzzle.cols, puzzle.rows]);
@@ -47,7 +73,7 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
     const measure = () => {
       const { width, height } = frame.getBoundingClientRect();
       if (width === 0 || height === 0) return;
-      setFittedWidth(Math.floor(Math.min(width, (height * puzzle.cols) / puzzle.rows)));
+      setFittedWidth(Math.floor(boardWidthFor(width, height, puzzle.cols, puzzle.rows)));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -87,12 +113,12 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
         </div>
       </div>
 
-      {/* The board takes whatever height is left and scrolls once zoomed in,
-          so the booster bar below always stays put and reachable. Sizing is
-          driven by aspect-ratio against BOTH axes, so a tall board fills the
-          available height instead of being capped by its width and leaving a
-          dead strip above the boosters. `m-auto` rather than centring on the
-          flex container, which would clip the top edge once zoomed. */}
+      {/* The board takes whatever height is left and scrolls whenever it
+          outgrows that — either because the puzzle is big (see
+          boardWidthFor) or because it's zoomed in — so the booster bar below
+          always stays put and reachable. `m-auto` centres a board that fits
+          without making the overflow of one that doesn't unreachable, which
+          centring on the flex container would. */}
       <div ref={frameRef} className="flex-1 min-h-0 overflow-auto flex">
         <div className="m-auto shrink-0" style={{ width: fittedWidth ? fittedWidth * zoom : "100%" }}>
           <MazeCanvas

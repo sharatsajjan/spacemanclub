@@ -12,13 +12,37 @@ const CYCLE_LEN = 5;
 const TIERS: DifficultyTier[] = ["Easy", "Medium", "Medium", "Hard", "Hardest"];
 const TIER_BONUS = [0, 1, 1, 2, 3];
 /**
- * The board size itself is hard-capped at 13x25 (325 cells) by gridForLevel
- * below, once targetCells reaches ~325 (scale ~36) — that's the real
+ * The board size itself is hard-capped at MAX_COLS x MAX_ROWS (760 cells) by
+ * gridForLevel below, once targetCells reaches that — that's the real
  * ceiling, not this constant. MAX_SCALE just needs to sit safely above it so
  * the scale formula's own clamp never kicks in earlier than the board-size
  * clamp already does.
  */
-const MAX_SCALE = 38;
+const MAX_SCALE = 86;
+
+/** The biggest board the game ever builds, reached around level 120. Bigger
+ * than the play area on a phone: past a certain size the board stops
+ * shrinking to fit and starts scrolling instead (see MazeGameView), so the
+ * ceiling is set by how long a level should take, not by the screen. */
+const MAX_COLS = 20;
+const MAX_ROWS = 38;
+
+/**
+ * Board size climbs in two gears. The first few cycles grow fast, so a new
+ * player reaches a board that fills the screen within a dozen levels rather
+ * than grinding through near-empty ones. After that it keeps growing, but
+ * slowly, taking until around level 120 to reach the ceiling — the late game
+ * should still feel like it's getting bigger, without the jump from one
+ * level to the next being large enough to notice.
+ */
+const FAST_CYCLES = 3;
+const FAST_STEP = 11;
+const SLOW_STEP = 2.1;
+
+function cycleBaseFor(cycle: number): number {
+  if (cycle <= FAST_CYCLES) return 9 + cycle * FAST_STEP;
+  return 9 + FAST_CYCLES * FAST_STEP + (cycle - FAST_CYCLES) * SLOW_STEP;
+}
 
 /**
  * The first `RAMP_LEVELS` levels ease in from a tiny board (a handful of
@@ -43,11 +67,7 @@ function cycleIndex(level: number): number {
 /** Internal difficulty knob driving board size — not a literal piece count. */
 function difficultyScaleForLevel(level: number): number {
   const pos = (level - 1) % CYCLE_LEN;
-  // Climbs to the board-size ceiling by around level 12. A player who opens
-  // the game sees a real puzzle within a handful of levels rather than
-  // having to grind dozens of near-empty boards before the game shows what
-  // it actually is.
-  const cycleBase = 9 + cycleIndex(level) * 11;
+  const cycleBase = cycleBaseFor(cycleIndex(level));
   const naturalScale = Math.min(MAX_SCALE, cycleBase + TIER_BONUS[pos]);
   if (level >= RAMP_LEVELS) return naturalScale;
   const rampFrac = level / RAMP_LEVELS;
@@ -59,13 +79,13 @@ export function gridForLevel(level: number): { cols: number; rows: number } {
   const targetCells = Math.max(6, Math.round(scale * 9));
   const minCols = level < RAMP_LEVELS ? 2 : 5;
   const minRows = level < RAMP_LEVELS ? 2 : 6;
-  // 0.52 is the cols:rows ratio the board is aimed at, chosen to match the
-  // play area left on a phone once the header and booster bar are taken
-  // out. A squarer board is width-bound on a tall screen: it hits the side
-  // edges while leaving a dead strip above the boosters, and the cells come
-  // out smaller for it.
-  const cols = Math.max(minCols, Math.min(13, Math.round(Math.sqrt(targetCells * 0.52))));
-  const rows = Math.max(minRows, Math.min(25, Math.round(targetCells / cols)));
+  // 0.52 is the cols:rows ratio the board is aimed at: roughly twice as tall
+  // as it is wide, which suits a phone held upright. Once a board outgrows
+  // the screen it scrolls vertically, and a tall board scrolls in one
+  // direction rather than two — a squarer board of the same cell count would
+  // need panning sideways as well.
+  const cols = Math.max(minCols, Math.min(MAX_COLS, Math.round(Math.sqrt(targetCells * 0.52))));
+  const rows = Math.max(minRows, Math.min(MAX_ROWS, Math.round(targetCells / cols)));
   return { cols, rows };
 }
 

@@ -20,7 +20,7 @@ interface BoosterBarProps {
  */
 export function BoosterBar({ onUndo, undosLeft, canUndo, onHint, hintsLeft, onZoom, zoom }: BoosterBarProps) {
   return (
-    <div className="grid grid-cols-3 gap-2 pt-3 pb-1">
+    <div data-testid="booster-bar" className="grid grid-cols-3 gap-2 pt-3 pb-1">
       <BoosterButton icon={<UndoIcon className="w-5 h-5" />} label="Undo" badge={String(undosLeft)} onClick={onUndo} disabled={!canUndo} />
       <BoosterButton
         icon={<LightbulbIcon className="w-5 h-5" />}
