@@ -27,8 +27,13 @@ interface Complexity {
    * dependency chain. Halving this roughly halved the number of legal moves
    * a player has at any moment. */
   spiralCoverage: number;
-  /** Roughly how many cells each spiral region covers (one long piece per
-   * region). */
+  /** Roughly how many cells each spiral region covers — one piece per
+   * region, so this is how big a coil gets.
+   *
+   * Small regions only make hooks and U-bends, which the ordinary growth
+   * already produces plenty of. A coil only reads as a coil once it has
+   * room to wind around itself two or three times, which takes a region of
+   * thirty cells or more. */
   spiralRegionCells: number;
   /** How often a piece's exit direction is chosen to run back over pieces
    * already built, rather than at random. See pickExitDirection: this is
@@ -49,10 +54,10 @@ interface Complexity {
  * breather in the difficulty wave.
  */
 const COMPLEXITY_BY_TIER: Record<DifficultyTier, Complexity> = {
-  Easy: { minLen: 6, maxLen: 14, turnBias: 0.35, spiralCoverage: 0.4, spiralRegionCells: 6, dependencyBias: 0.75 },
-  Medium: { minLen: 9, maxLen: 24, turnBias: 0.6, spiralCoverage: 0.35, spiralRegionCells: 7, dependencyBias: 0.9 },
-  Hard: { minLen: 12, maxLen: 34, turnBias: 0.75, spiralCoverage: 0.3, spiralRegionCells: 8, dependencyBias: 0.97 },
-  Hardest: { minLen: 14, maxLen: 44, turnBias: 0.85, spiralCoverage: 0.25, spiralRegionCells: 9, dependencyBias: 1 },
+  Easy: { minLen: 10, maxLen: 24, turnBias: 0.35, spiralCoverage: 0.3, spiralRegionCells: 16, dependencyBias: 0.75 },
+  Medium: { minLen: 18, maxLen: 40, turnBias: 0.6, spiralCoverage: 0.3, spiralRegionCells: 25, dependencyBias: 0.9 },
+  Hard: { minLen: 24, maxLen: 56, turnBias: 0.75, spiralCoverage: 0.32, spiralRegionCells: 34, dependencyBias: 0.97 },
+  Hardest: { minLen: 28, maxLen: 70, turnBias: 0.85, spiralCoverage: 0.35, spiralRegionCells: 42, dependencyBias: 1 },
 };
 
 function directionBetween(from: Coord, to: Coord): Coord {
@@ -94,7 +99,7 @@ const KEYSTONE_CHANCE = 0.6;
 /** Share of spiral blocks left oversized, to become long nested coils. */
 const FEATURE_BLOCK_CHANCE = 0.18;
 /** Share of blocks laid out as a comb rather than a coil. */
-const SERPENTINE_CHANCE = 0.4;
+const SERPENTINE_CHANCE = 0.3;
 
 /**
  * The highest-numbered already-built piece in a head's exit lane, or -1 if

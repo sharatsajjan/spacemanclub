@@ -9,9 +9,12 @@ import { Coord, Direction, Piece } from "./types";
 /** Milliseconds per cell travelled. */
 const MS_PER_CELL = 30;
 /** A piece already at the edge still gets a beat; a piece crossing a tall
- * board doesn't get a crawl. */
+ * board doesn't get a crawl. The ceiling has to leave room for the long
+ * ones — a thirty-cell piece threading out covers far more ground than the
+ * board is tall, and clamping it too early made it move visibly faster
+ * than everything else. */
 const MIN_MS = 200;
-const MAX_MS = 640;
+const MAX_MS = 950;
 /** One frame of slack so the piece isn't unmounted on the last frame of its
  * own animation, which would snap the tail away mid-motion. */
 export const EXIT_UNMOUNT_GRACE_MS = 32;
