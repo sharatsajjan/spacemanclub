@@ -24,18 +24,23 @@ const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180,
  * noticeably wider than the line so the arrowhead still reads clearly at
  * this thinner stroke, with its base at the cell center so it meets the
  * line's own end with no gap or visible seam. */
-const ARROW_PATH = "M0 -0.42 L0.20 -0.06 L-0.20 -0.06 Z";
-const ARROW_HALO_PATH = "M0 -0.48 L0.25 -0.03 L-0.25 -0.03 Z";
+const ARROW_PATH = "M0 -0.46 L0.30 -0.02 L-0.30 -0.02 Z";
+const ARROW_HALO_PATH = "M0 -0.5 L0.36 0.02 L-0.36 0.02 Z";
 /**
- * A slim line with a generous channel of background on either side, so the
- * board reads as a drawn maze of routed pipes rather than a block of
- * colour — every cell still belongs to some piece (the puzzle is a full
- * tiling), the runs are just drawn thin. Thin enough that the dot under
- * each cell centre stays visible alongside the line rather than being
- * swallowed by it.
+ * How much of a cell a piece's line paints.
+ *
+ * A stroke of width w crossing a cell covers w of that cell's area, so this
+ * number IS the board's ink coverage. The board is a full tiling — every
+ * cell belongs to some piece — but at 0.155 only about a sixth of it was
+ * inked and the rest read as gaps, which is not what a fully packed board
+ * should look like. At 0.32 the channel between two neighbouring runs is
+ * still two thirds of a cell, so pieces stay clearly separate.
+ *
+ * Going much past this is worse, not denser: by 0.42 the arrowheads are as
+ * wide as the lines they cap and stop reading as arrows.
  */
-const LINE_WIDTH = 0.155;
-const HALO_WIDTH = 0.265;
+const LINE_WIDTH = 0.32;
+const HALO_WIDTH = 0.43;
 /** Radius of the smooth quarter-turn drawn at each bend. At this stroke
  * width a plain mitred/round join reads as a hard corner, so bends are
  * curved explicitly. */
@@ -45,8 +50,8 @@ const CORNER_RADIUS = 0.34;
  * instead of stopping halfway back at the center. */
 const TAIL_EXTEND = 0.34;
 /** Fallback fill for the rare 1-cell piece (no line to stroke at all). */
-const SINGLE_CELL_FILL = 0.17;
-const SINGLE_CELL_HALO_FILL = 0.28;
+const SINGLE_CELL_FILL = 0.34;
+const SINGLE_CELL_HALO_FILL = 0.45;
 /** Radius of the dot marking each cell centre. Every line runs from centre
  * to centre, so the dots are the lattice the whole maze is pegged to.
  *
