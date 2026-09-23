@@ -9,9 +9,10 @@ const MAX_GENERATION_ATTEMPTS = 20;
 interface Complexity {
   minLen: number;
   maxLen: number;
-  /** Probability of preferring a turn over continuing straight when a piece's
-   * tail has a choice of both, while growing it. Higher = more zigzags and
-   * spirals instead of long straight runs. */
+  /** Probability of preferring a turn over continuing straight, once the
+   * piece has already run its minStraightRun and is free to do either.
+   * Deliberately low: a maze is long runs meeting at clean corners, and a
+   * piece that takes every turn on offer draws a comb instead. */
   turnBias: number;
   /** Fraction of the board to hand to reserved "spiral regions" (see
    * buildSpiralPieces below), which become genuine multi-turn winding
@@ -40,6 +41,10 @@ interface Complexity {
    * what decides whether the board is a pile of independently-clearable
    * pieces or a puzzle with an order to work out. */
   dependencyBias: number;
+  /** How many cells a piece must run straight before it is allowed to turn
+   * again. See the growth loop: this is what makes a piece read as long
+   * runs joined by clean corners instead of a row of one-cell teeth. */
+  minStraightRun: number;
 }
 
 /**
@@ -54,10 +59,10 @@ interface Complexity {
  * breather in the difficulty wave.
  */
 const COMPLEXITY_BY_TIER: Record<DifficultyTier, Complexity> = {
-  Easy: { minLen: 6, maxLen: 14, turnBias: 0.35, spiralCoverage: 0.3, spiralRegionCells: 16, dependencyBias: 0.75 },
-  Medium: { minLen: 8, maxLen: 18, turnBias: 0.6, spiralCoverage: 0.3, spiralRegionCells: 25, dependencyBias: 0.9 },
-  Hard: { minLen: 9, maxLen: 22, turnBias: 0.75, spiralCoverage: 0.32, spiralRegionCells: 34, dependencyBias: 0.97 },
-  Hardest: { minLen: 10, maxLen: 26, turnBias: 0.85, spiralCoverage: 0.35, spiralRegionCells: 42, dependencyBias: 1 },
+  Easy: { minLen: 6, maxLen: 14, turnBias: 0.15, spiralCoverage: 0.3, spiralRegionCells: 16, dependencyBias: 0.75, minStraightRun: 5 },
+  Medium: { minLen: 8, maxLen: 18, turnBias: 0.2, spiralCoverage: 0.3, spiralRegionCells: 25, dependencyBias: 0.9, minStraightRun: 6 },
+  Hard: { minLen: 9, maxLen: 22, turnBias: 0.2, spiralCoverage: 0.32, spiralRegionCells: 34, dependencyBias: 0.97, minStraightRun: 7 },
+  Hardest: { minLen: 10, maxLen: 26, turnBias: 0.25, spiralCoverage: 0.35, spiralRegionCells: 42, dependencyBias: 1, minStraightRun: 8 },
 };
 
 function directionBetween(from: Coord, to: Coord): Coord {
@@ -804,6 +809,20 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
       const straightOptions = shuffledOptions.filter((c) => sameDirection(directionBetween(cur, c), prevDir));
       const byTurn = rand() < complexity.turnBias ? [...turnOptions, ...straightOptions] : [...straightOptions, ...turnOptions];
 
+      // How far the piece has already run in its current direction.
+      let straightSoFar = 1;
+      for (let i = cells.length - 1; i >= 2; i--) {
+        const q = cells[i - 2], a = cells[i - 1], b = cells[i];
+        if (q.row - a.row !== a.row - b.row || q.col - a.col !== a.col - b.col) break;
+        straightSoFar++;
+      }
+      // Below the tier's minimum, going straight outranks everything. Left to
+      // itself the growth turned at almost every opportunity — 71% of its
+      // straight runs were a single cell, which draws a comb of one-cell
+      // teeth rather than the long runs and clean corners a maze is made of.
+      const mustRunOn = straightSoFar < complexity.minStraightRun;
+      const keepsGoing = (c: Coord) => sameDirection(directionBetween(cur, c), prevDir);
+
       // Warnsdorff's rule, the standard way to grow a long path through a
       // grid without painting yourself into a corner: step into the cell
       // with the FEWEST free neighbours left, so the tightest pockets get
@@ -819,8 +838,8 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
           return n.row >= 0 && n.row < rows && n.col >= 0 && n.col < cols && present[n.row][n.col] && pieceIdGrid[n.row][n.col] === -1;
         }).length;
       const orderedOptions = byTurn
-        .map((c, i) => ({ c, i, free: freeNeighbours(c) }))
-        .sort((a, b) => a.free - b.free || a.i - b.i)
+        .map((c, i) => ({ c, i, free: freeNeighbours(c), holdsLine: mustRunOn && keepsGoing(c) ? 0 : 1 }))
+        .sort((a, b) => a.holdsLine - b.holdsLine || a.free - b.free || a.i - b.i)
         .map(({ c }) => c);
 
       let extended = false;
