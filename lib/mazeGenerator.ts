@@ -115,17 +115,43 @@ const SERPENTINE_CHANCE = 0.3;
  * the newest — and the other five are irrelevant to when it opens up.
  */
 function laneBlocker(head: Coord, dir: Direction, pieceIdGrid: number[][], cols: number, rows: number): number {
+  return laneBlockerInfo(head, dir, pieceIdGrid, cols, rows).id;
+}
+
+/**
+ * The lane's blocker, plus how far along the lane it sits.
+ *
+ * The distance is what decides whether a piece is a puzzle or a glance.
+ * Everything nearer than the blocker has a lower id, so it clears first —
+ * meaning that by the time the piece is nearly ready its lane is open for
+ * `dist` cells and then stopped. A piece with dist 1 is dismissed instantly:
+ * the cell in front of the arrow is full. A piece with dist 12 looks open
+ * and isn't, and the only way to tell is to follow the lane.
+ */
+function laneBlockerInfo(
+  head: Coord,
+  dir: Direction,
+  pieceIdGrid: number[][],
+  cols: number,
+  rows: number
+): { id: number; dist: number } {
   const d = delta(dir);
-  let best = -1;
+  let id = -1;
+  let dist = 0;
+  let steps = 0;
   let r = head.row + d.row;
   let c = head.col + d.col;
   while (r >= 0 && r < rows && c >= 0 && c < cols) {
-    const id = pieceIdGrid[r][c];
-    if (id > best) best = id;
+    steps++;
+    const here = pieceIdGrid[r][c];
+    if (here > id) {
+      id = here;
+      dist = steps;
+    }
     r += d.row;
     c += d.col;
   }
-  return best;
+  return { id, dist };
 }
 
 /**
@@ -150,16 +176,18 @@ function laneBlocker(head: Coord, dir: Direction, pieceIdGrid: number[][], cols:
  * Solvability is untouched either way: a lane can only cross pieces built
  * BEFORE this one, and those are cleared first by construction.
  */
-function candidateBlocker(
+/** The best lane a candidate could take, judged the way pickCandidate judges
+ * it: furthest blocker first, newest to break a tie. */
+function candidateBlockerInfo(
   candidate: Candidate,
   pieceIdGrid: number[][],
   cols: number,
   rows: number
-): number {
-  let best = -1;
+): { id: number; dist: number } {
+  let best = { id: -1, dist: -1 };
   for (const dir of candidate.growDirs) {
-    const b = laneBlocker(candidate.cell, dir, pieceIdGrid, cols, rows);
-    if (b > best) best = b;
+    const info = laneBlockerInfo(candidate.cell, dir, pieceIdGrid, cols, rows);
+    if (info.dist > best.dist || (info.dist === best.dist && info.id > best.id)) best = info;
   }
   return best;
 }
@@ -202,8 +230,12 @@ function pickCandidate(
     );
     if (behindKeystone) return behindKeystone;
   }
-  const scored = shuffled.map((candidate) => ({ candidate, blocker: candidateBlocker(candidate, pieceIdGrid, cols, rows) }));
-  return scored.reduce((a, b) => (b.blocker > a.blocker ? b : a)).candidate;
+  // Otherwise the candidate whose blocker sits FURTHEST down its lane,
+  // breaking ties toward the newest blocker. Ranking by newest alone left
+  // boards where 80% of pieces were blocked by the cell directly in front of
+  // the arrow, so nothing ever had to be traced.
+  const scored = shuffled.map((candidate) => ({ candidate, ...candidateBlockerInfo(candidate, pieceIdGrid, cols, rows) }));
+  return scored.reduce((a, b) => (b.dist > a.dist || (b.dist === a.dist && b.id > a.id) ? b : a)).candidate;
 }
 
 function pickExitDirection(
@@ -219,12 +251,12 @@ function pickExitDirection(
   const shuffled = shuffle(dirs, rand);
   if (rand() >= dependencyBias) return shuffled[0];
 
-  const scored = shuffled.map((dir) => ({ dir, blocker: laneBlocker(head, dir, pieceIdGrid, cols, rows) }));
+  const scored = shuffled.map((dir) => ({ dir, ...laneBlockerInfo(head, dir, pieceIdGrid, cols, rows) }));
   if (keystoneId >= 0) {
-    const behindKeystone = scored.find((s) => s.blocker === keystoneId);
+    const behindKeystone = scored.find((s) => s.id === keystoneId);
     if (behindKeystone) return behindKeystone.dir;
   }
-  return scored.reduce((a, b) => (b.blocker > a.blocker ? b : a)).dir;
+  return scored.reduce((a, b) => (b.dist > a.dist || (b.dist === a.dist && b.id > a.id) ? b : a)).dir;
 }
 
 function directionFromDelta(d: Coord): Direction | null {

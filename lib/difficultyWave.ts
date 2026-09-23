@@ -18,14 +18,20 @@ const TIER_BONUS = [0, 1, 1, 2, 3];
  * the scale formula's own clamp never kicks in earlier than the board-size
  * clamp already does.
  */
-const MAX_SCALE = 48;
+const MAX_SCALE = 62;
 
 /** The biggest board the game ever builds, reached around level 120.
  * The whole board is always on screen (see MazeGameView), so the ceiling is
  * set by the screen: past this the cells get too small to read or hit
- * comfortably on a phone. */
-const MAX_COLS = 15;
-const MAX_ROWS = 28;
+ * comfortably on a phone.
+ *
+ * Pieces got long enough that a board this size holds only a couple of dozen
+ * of them, and with so few to look at a player finds the legal one quickly.
+ * More cells means more pieces to scan, which is the honest way to make
+ * finding the next move take work. It costs cell size — roughly 25px rather
+ * than 31px on a mid-sized phone. */
+const MAX_COLS = 17;
+const MAX_ROWS = 32;
 
 /**
  * Board size climbs in two gears. The first few cycles grow fast, so a new
@@ -37,7 +43,7 @@ const MAX_ROWS = 28;
  */
 const FAST_CYCLES = 3;
 const FAST_STEP = 11;
-const SLOW_STEP = 0.24;
+const SLOW_STEP = 1.0;
 
 function cycleBaseFor(cycle: number): number {
   if (cycle <= FAST_CYCLES) return 9 + cycle * FAST_STEP;
