@@ -47,14 +47,16 @@ const TAIL_EXTEND = 0.34;
 /** Fallback fill for the rare 1-cell piece (no line to stroke at all). */
 const SINGLE_CELL_FILL = 0.17;
 const SINGLE_CELL_HALO_FILL = 0.28;
-/** Radius of the dot marking each cell centre. Every line runs from centre
- * to centre, so the dots are the lattice the whole maze is pegged to.
+/** Radius of the dots marking the grid.
  *
- * They sit UNDER the pieces, and the board is a full tiling, so at the
- * start of a level almost every dot is hidden beneath the line running
- * through its cell. The lattice emerges as pieces clear, which is what
- * keeps emptied space reading as part of the grid rather than as a hole. */
-const DOT_RADIUS = 0.07;
+ * They sit at the CORNERS of the cells, not the centres. A dot at a centre
+ * is invisible: every line runs centre to centre and the board is a full
+ * tiling, so each such dot spends the whole level hidden under the line
+ * through its own cell, only appearing once that piece has gone. At the
+ * corners the dots fall in the middle of the channel between neighbouring
+ * runs, well clear of any stroke, so the grid is there from the first
+ * frame and the maze reads as drawn on it. */
+const DOT_RADIUS = 0.045;
 
 /** Fixed amber/gold, independent of theme — same role as the always-red danger flash. */
 const HINT_COLOR = "#e0983d";
@@ -344,14 +346,13 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
         viewBox={`0 0 ${cols} ${rows}`}
         preserveAspectRatio="none"
       >
-        {/* The lattice the maze is drawn on: one dot per cell centre, under
-            everything else. Every piece's line runs centre to centre, so
-            each dot either sits beneath a line or marks a cell that has
-            been cleared. */}
-        <g fill="var(--sub2)" opacity={0.5}>
-          {Array.from({ length: rows }).flatMap((_, r) =>
-            Array.from({ length: cols }).map((__, c) => (
-              <circle key={`dot-${r}-${c}`} cx={c + 0.5} cy={r + 0.5} r={DOT_RADIUS} />
+        {/* The lattice the maze is drawn on: a dot at every cell corner,
+            under everything else. One more dot than cells along each axis,
+            since corners bound them. */}
+        <g fill="var(--sub2)" opacity={0.45}>
+          {Array.from({ length: rows + 1 }).flatMap((_, r) =>
+            Array.from({ length: cols + 1 }).map((__, c) => (
+              <circle key={`dot-${r}-${c}`} cx={c} cy={r} r={DOT_RADIUS} />
             ))
           )}
         </g>
