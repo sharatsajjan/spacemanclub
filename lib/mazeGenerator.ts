@@ -15,10 +15,17 @@ interface Complexity {
   turnBias: number;
   /** Fraction of the board to hand to reserved "spiral regions" (see
    * buildSpiralPieces below), which become genuine multi-turn winding
-   * pieces. A straight piece is cheap to place anywhere; a bent one needs
-   * its whole swept lane clear, which only reliably happens inside these
-   * reserved regions — so this is the real lever on how twisty a board
-   * looks. */
+   * pieces.
+   *
+   * This used to be the main source of twisty shapes, and was set high
+   * because ordinary growth could not produce them. It no longer is: once
+   * growth could run long without stranding cells, it started producing
+   * pieces of fifteen-plus cells with six or more bends by itself. Spiral
+   * blocks are now a garnish, and a costly one — their pieces are placed by
+   * whichever end can exit rather than by what they'd be waiting on, so
+   * every cell handed to a block is a cell that isn't part of the board's
+   * dependency chain. Halving this roughly halved the number of legal moves
+   * a player has at any moment. */
   spiralCoverage: number;
   /** Roughly how many cells each spiral region covers (one long piece per
    * region). */
@@ -31,16 +38,21 @@ interface Complexity {
 }
 
 /**
- * How long and how bendy pieces are, scaled by tier: early/easy levels stay
- * short and mostly straight, later/harder tiers grow longer, more twisted
- * pieces (Hardest reaching genuine spiral-like shapes) — matching how much
- * more complex "Level 171 / Super Hard" should feel than "Level 21".
+ * How long and how bendy pieces are, scaled by tier.
+ *
+ * The lengths look extreme next to a grid this size — a Hardest piece
+ * averages about eighteen cells — and that is the point. A board of short
+ * pieces is a board where almost everything is tappable at once: there is a
+ * correct order but no reason to look for it. Longer pieces mean fewer of
+ * them, each lying across more lanes, and the number of legal moves at any
+ * moment falls out of that. Easy tiers stay short on purpose, as the
+ * breather in the difficulty wave.
  */
 const COMPLEXITY_BY_TIER: Record<DifficultyTier, Complexity> = {
-  Easy: { minLen: 3, maxLen: 6, turnBias: 0.35, spiralCoverage: 0.45, spiralRegionCells: 6, dependencyBias: 0.75 },
-  Medium: { minLen: 3, maxLen: 8, turnBias: 0.6, spiralCoverage: 0.55, spiralRegionCells: 7, dependencyBias: 0.9 },
-  Hard: { minLen: 4, maxLen: 10, turnBias: 0.75, spiralCoverage: 0.6, spiralRegionCells: 8, dependencyBias: 0.97 },
-  Hardest: { minLen: 4, maxLen: 12, turnBias: 0.85, spiralCoverage: 0.75, spiralRegionCells: 9, dependencyBias: 1 },
+  Easy: { minLen: 6, maxLen: 14, turnBias: 0.35, spiralCoverage: 0.4, spiralRegionCells: 6, dependencyBias: 0.75 },
+  Medium: { minLen: 9, maxLen: 24, turnBias: 0.6, spiralCoverage: 0.35, spiralRegionCells: 7, dependencyBias: 0.9 },
+  Hard: { minLen: 12, maxLen: 34, turnBias: 0.75, spiralCoverage: 0.3, spiralRegionCells: 8, dependencyBias: 0.97 },
+  Hardest: { minLen: 14, maxLen: 44, turnBias: 0.85, spiralCoverage: 0.25, spiralRegionCells: 9, dependencyBias: 1 },
 };
 
 function directionBetween(from: Coord, to: Coord): Coord {
@@ -753,7 +765,26 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
       const prevDir = directionBetween(cells[cells.length - 2], cur);
       const turnOptions = shuffledOptions.filter((c) => !sameDirection(directionBetween(cur, c), prevDir));
       const straightOptions = shuffledOptions.filter((c) => sameDirection(directionBetween(cur, c), prevDir));
-      const orderedOptions = rand() < complexity.turnBias ? [...turnOptions, ...straightOptions] : [...straightOptions, ...turnOptions];
+      const byTurn = rand() < complexity.turnBias ? [...turnOptions, ...straightOptions] : [...straightOptions, ...turnOptions];
+
+      // Warnsdorff's rule, the standard way to grow a long path through a
+      // grid without painting yourself into a corner: step into the cell
+      // with the FEWEST free neighbours left, so the tightest pockets get
+      // used up while they are still reachable. Without it, longer pieces
+      // snake past narrow gaps and seal cells off — pushing maximum piece
+      // length up drove stranded single cells from roughly one a board to
+      // four. Turn preference decides between cells that are equally
+      // constrained, so the zigzag shapes survive.
+      const freeNeighbours = (c: Coord) =>
+        DIRECTIONS.filter((dir) => {
+          const dd = delta(dir);
+          const n = { row: c.row + dd.row, col: c.col + dd.col };
+          return n.row >= 0 && n.row < rows && n.col >= 0 && n.col < cols && present[n.row][n.col] && pieceIdGrid[n.row][n.col] === -1;
+        }).length;
+      const orderedOptions = byTurn
+        .map((c, i) => ({ c, i, free: freeNeighbours(c) }))
+        .sort((a, b) => a.free - b.free || a.i - b.i)
+        .map(({ c }) => c);
 
       let extended = false;
       for (const candidate of orderedOptions) {
