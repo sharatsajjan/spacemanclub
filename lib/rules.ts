@@ -34,11 +34,18 @@ export function inBounds(cols: number, rows: number, c: Coord): boolean {
  * `cells[0]` is the head. Every piece is built that way (see
  * mazeGenerator), and the arrowhead is drawn there, so the end the player
  * sees pointing the way out is the same end this checks from.
+ *
+ * The piece's OWN body blocks that lane too. A coil whose head points back
+ * through its own loop can't thread out: the body follows the head rather
+ * than moving aside, so the cell ahead is still occupied when the head
+ * reaches it. (Under the old rigid rule the whole shape moved at once and
+ * its own cells couldn't get in the way, which is why they were exempt.)
+ * Anything this rejects on its own body is rejected forever, so the
+ * generator has to avoid building one — it runs this same check, and
+ * verifySolvable is the backstop.
  */
 export function pieceCanExit(
   present: boolean[][],
-  pieceIdGrid: number[][],
-  pieceId: number,
   cells: Coord[],
   cols: number,
   rows: number,
@@ -50,7 +57,7 @@ export function pieceCanExit(
   let r = head.row + d.row;
   let c = head.col + d.col;
   while (r >= 0 && r < rows && c >= 0 && c < cols) {
-    if (present[r][c] && pieceIdGrid[r][c] !== pieceId) return false;
+    if (present[r][c]) return false;
     r += d.row;
     c += d.col;
   }

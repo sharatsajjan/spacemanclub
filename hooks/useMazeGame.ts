@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Direction, Puzzle } from "@/lib/types";
 import { pieceCanExit } from "@/lib/rules";
 import { maxHintsForLevel, maxUndosForLevel } from "@/lib/difficultyWave";
+import { EXIT_UNMOUNT_GRACE_MS, exitDurationMs } from "@/lib/exitMotion";
 import { hapticHint, hapticMistake, hapticSuccess } from "@/lib/haptics";
 
 interface UseMazeGameOptions {
@@ -11,9 +12,6 @@ interface UseMazeGameOptions {
   onMistake: () => void;
   onAllComplete: () => void;
 }
-
-/** Must stay in sync with the slide transition duration in MazeCanvas. */
-const EXIT_ANIMATION_MS = 380;
 
 function makePresentGrid(cols: number, rows: number): boolean[][] {
   return Array.from({ length: rows }, () => new Array(cols).fill(true));
@@ -109,7 +107,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
             nextMap.delete(id);
             return nextMap;
           });
-        }, EXIT_ANIMATION_MS)
+        }, exitDurationMs(piece, puzzle.cols, puzzle.rows) + EXIT_UNMOUNT_GRACE_MS)
       );
 
       setClearedCount((n) => {
@@ -121,7 +119,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
         return nextCount;
       });
     },
-    [present, piecesById, totalPieces, onAllComplete]
+    [present, piecesById, totalPieces, onAllComplete, puzzle.cols, puzzle.rows]
   );
 
   const tapCell = useCallback(
@@ -131,7 +129,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       if (id === -1 || !present[row][col]) return; // already cleared, no-op
 
       const piece = piecesById.get(id)!;
-      const canExit = pieceCanExit(present, pieceIdGrid, id, piece.cells, puzzle.cols, puzzle.rows, piece.direction);
+      const canExit = pieceCanExit(present, piece.cells, puzzle.cols, puzzle.rows, piece.direction);
 
       if (canExit) {
         clearPiece(id);
@@ -150,14 +148,14 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     const clearable = puzzle.pieces.filter(
       (piece) =>
         present[piece.cells[0].row][piece.cells[0].col] &&
-        pieceCanExit(present, pieceIdGrid, piece.id, piece.cells, puzzle.cols, puzzle.rows, piece.direction)
+        pieceCanExit(present, piece.cells, puzzle.cols, puzzle.rows, piece.direction)
     );
     if (clearable.length === 0) return;
     const pick = clearable[Math.floor(Math.random() * clearable.length)];
     setHintsUsed((h) => h + 1);
     setHintPieceId(pick.id);
     hapticHint();
-  }, [present, pieceIdGrid, puzzle.pieces, puzzle.cols, puzzle.rows, hintsUsed, maxHints]);
+  }, [present, puzzle.pieces, puzzle.cols, puzzle.rows, hintsUsed, maxHints]);
 
   /** Puts the most recently cleared piece back. Safe at any point: a piece
    * that was legal to clear is always legal to restore, since putting cells

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import { Coord, Direction, Piece, Puzzle } from "@/lib/types";
 import { delta } from "@/lib/rules";
+import { EXIT_EASING, exitDurationMs, exitRunOut } from "@/lib/exitMotion";
 
 interface MazeCanvasProps {
   puzzle: Puzzle;
@@ -16,10 +17,6 @@ interface MazeCanvasProps {
   disabled?: boolean;
   onTap: (row: number, col: number) => void;
 }
-
-/** Must stay in sync with EXIT_ANIMATION_MS in useMazeGame.ts. */
-const EXIT_ANIMATION_MS = 380;
-const EXIT_EASING = "cubic-bezier(0.4, 0, 1, 1)";
 
 const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180, left: 270 };
 /** Solid filled arrow cap. Its apex reaches almost to the cell's true outer
@@ -172,30 +169,19 @@ function headCellOf(piece: Piece) {
  * segment are collinear (the head's tangent is the exit direction by
  * construction), so the join is a straight line, not a corner.
  */
-function buildExitPath(piece: Piece, cols: number, rows: number): { d: string; runOut: number; bodyLength: number } {
+function buildExitPath(piece: Piece, cols: number, rows: number): { d: string; runOut: number } {
   const head = piece.cells[0];
   const dir = delta(piece.direction);
-  const edgeDistance =
-    piece.direction === "up"
-      ? head.row + 0.5
-      : piece.direction === "down"
-        ? rows - head.row - 0.5
-        : piece.direction === "left"
-          ? head.col + 0.5
-          : cols - head.col - 0.5;
   // Far enough that the arrowhead is past the edge before the body follows.
-  const runOut = edgeDistance + 1;
+  const runOut = exitRunOut(piece, cols, rows);
 
   const exitPoint = {
     x: head.col + 0.5 + dir.col * runOut,
     y: head.row + 0.5 + dir.row * runOut,
   };
   const body = buildPiecePath(piece, head);
-  // Rounded corners shave a little off the true length; padding keeps the
-  // drawn body from falling short of its own tail.
-  const bodyLength = piece.cells.length - 1 + TAIL_EXTEND + 0.4;
 
-  return { d: `M${exitPoint.x} ${exitPoint.y} ${body.replace(/^M/, "L")}`, runOut, bodyLength };
+  return { d: `M${exitPoint.x} ${exitPoint.y} ${body.replace(/^M/, "L")}`, runOut };
 }
 
 /**
@@ -204,10 +190,16 @@ function buildExitPath(piece: Piece, cols: number, rows: number): { d: string; r
  * the body currently sits to past the start (the exit point) — which reads
  * as the piece following its own line out, head first.
  *
- * Driven by the Web Animations API off a ref rather than a CSS transition:
- * a transition needs the element to render once at its starting offset and
- * again at its end, and this element only exists for the length of the
- * animation.
+ * Driven by the Web Animations API rather than a CSS transition: a transition
+ * needs the element to render once at its starting offset and again at its
+ * end, and this element only exists for the length of the animation.
+ *
+ * The animations are started from an effect that runs once per mount, not
+ * from a ref callback. A ref callback is a fresh function on every render, so
+ * React detaches and reattaches it each time — and the board re-renders
+ * whenever any other piece is tapped or finishes leaving, which restarted
+ * every in-flight slide from the beginning. Tapping two pieces in quick
+ * succession made the first visibly jump back to its start.
  */
 function ExitingPiece({
   piece,
@@ -226,48 +218,65 @@ function ExitingPiece({
   rotation: number;
   arrowPath: string;
 }) {
-  const { d, runOut, bodyLength } = buildExitPath(piece, cols, rows);
+  const { d, runOut } = buildExitPath(piece, cols, rows);
   const head = piece.cells[0];
   const dir = delta(piece.direction);
-  const travel = runOut + bodyLength;
+  const pathRef = useRef<SVGPathElement | null>(null);
+  const arrowRef = useRef<SVGGElement | null>(null);
 
-  const startAnimation = (node: SVGPathElement | null) => {
-    if (!node) return;
-    node.animate([{ strokeDashoffset: -runOut }, { strokeDashoffset: bodyLength }], {
-      duration: EXIT_ANIMATION_MS,
+  useLayoutEffect(() => {
+    const path = pathRef.current;
+    const arrow = arrowRef.current;
+    if (!path || !arrow) return;
+
+    // Measured, not estimated. The body's length along the path is whatever
+    // is left after the run-out, and rounded corners make that shorter than
+    // the cell count by an amount that depends on how many times the piece
+    // bends — guessing it left the drawn body overshooting or falling short
+    // of its own tail, which showed up as the tail stretching as it left.
+    const total = path.getTotalLength();
+    const bodyLength = total - runOut;
+    path.setAttribute("stroke-dasharray", `${bodyLength} ${total + bodyLength}`);
+
+    const timing: KeyframeAnimationOptions = {
+      duration: exitDurationMs(piece, cols, rows),
       easing: EXIT_EASING,
       fill: "forwards",
-    });
-  };
-
-  const startArrow = (node: SVGGElement | null) => {
-    if (!node) return;
+    };
+    const bodyAnim = path.animate([{ strokeDashoffset: -runOut }, { strokeDashoffset: bodyLength }], timing);
     // The head runs straight out along the extension, so the arrowhead just
-    // travels in the exit direction. It is off the board long before the
-    // body finishes, which is why it can keep going past the edge. Lengths
-    // are in px because that is what the animation API accepts here, and on
-    // an SVG element a px resolves to one user unit — the same units as the
-    // viewBox, not screen pixels.
-    node.animate(
-      [{ transform: "translate(0px, 0px)" }, { transform: `translate(${dir.col * travel}px, ${dir.row * travel}px)` }],
-      { duration: EXIT_ANIMATION_MS, easing: EXIT_EASING, fill: "forwards" }
+    // travels in the exit direction, the same distance the body walks along
+    // the path — identical timing keeps the two glued together. It is off the
+    // board long before the body finishes, which is why it can keep going
+    // past the edge. Lengths are in px because that is what the animation API
+    // accepts here, and on an SVG element a px resolves to one user unit —
+    // the same units as the viewBox, not screen pixels.
+    const arrowAnim = arrow.animate(
+      [{ transform: "translate(0px, 0px)" }, { transform: `translate(${dir.col * total}px, ${dir.row * total}px)` }],
+      timing
     );
-  };
+    return () => {
+      bodyAnim.cancel();
+      arrowAnim.cancel();
+    };
+    // Started once for the life of this piece's slide-out; re-running it on a
+    // re-render is the bug this effect exists to avoid.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <g>
       <path
-        ref={startAnimation}
+        ref={pathRef}
         d={d}
         fill="none"
         stroke={color}
         strokeWidth={width}
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeDasharray={`${bodyLength} ${travel + bodyLength}`}
         strokeDashoffset={-runOut}
       />
-      <g ref={startArrow}>
+      <g ref={arrowRef}>
         <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
           <path d={arrowPath} fill={color} />
         </g>

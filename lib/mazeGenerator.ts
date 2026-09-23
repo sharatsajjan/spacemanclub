@@ -264,7 +264,7 @@ function buildSpiralPieces(
       for (const c of path) pieceIdGrid[c.row][c.col] = tempId;
       let placed = false;
       for (const end of shuffle(ends, rand)) {
-        if (pieceCanExit(present, pieceIdGrid, tempId, end.cells, cols, rows, end.dir)) {
+        if (pieceCanExit(present, end.cells, cols, rows, end.dir)) {
           const id = pieces.length;
           for (const c of path) pieceIdGrid[c.row][c.col] = id;
           pieces.push({ id, cells: end.cells, direction: end.dir });
@@ -337,7 +337,7 @@ function tryMergeIntoNeighborTail(
 
     const asOf = presentAsOfPieceId(pieces, pid, cols, rows);
     pieceIdGrid[cell.row][cell.col] = pid;
-    if (pieceCanExit(asOf, pieceIdGrid, pid, [...piece.cells, cell], cols, rows, piece.direction)) {
+    if (pieceCanExit(asOf, [...piece.cells, cell], cols, rows, piece.direction)) {
       piece.cells.push(cell);
       present[cell.row][cell.col] = false;
       return true;
@@ -416,7 +416,7 @@ function tryRescue(
           const delt = delta(d);
           return cells[0].row - cells[1].row === delt.row && cells[0].col - cells[1].col === delt.col;
         })!;
-        const ok = pieceCanExit(present, pieceIdGrid, tempId, cells, cols, rows, dir);
+        const ok = pieceCanExit(present, cells, cols, rows, dir);
         for (const c of cells) pieceIdGrid[c.row][c.col] = -1;
         if (ok) {
           const id = pieces.length;
@@ -484,26 +484,21 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
   while (true) {
     const growable: Candidate[] = [];
     const singletonOnly: Candidate[] = [];
-    const tempId = -2;
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         if (!present[row][col]) continue;
         if (!spiralsProcessed && reserved[row][col]) continue; // held back for buildSpiralPieces below
-        const dirs = DIRECTIONS.filter((dir) => pieceCanExit(present, pieceIdGrid, tempId, [{ row, col }], cols, rows, dir));
+        const dirs = DIRECTIONS.filter((dir) => pieceCanExit(present, [{ row, col }], cols, rows, dir));
         if (dirs.length === 0) continue;
 
         const growDirs: Direction[] = [];
-        pieceIdGrid[row][col] = tempId; // so the mandatory cell's own sweep doesn't treat the head as foreign
         for (const dir of dirs) {
           const d = delta(dir);
           const m: Coord = { row: row - d.row, col: col - d.col };
           if (m.row < 0 || m.row >= rows || m.col < 0 || m.col >= cols || !present[m.row][m.col] || pieceIdGrid[m.row][m.col] !== -1) continue;
-          pieceIdGrid[m.row][m.col] = tempId;
-          if (pieceCanExit(present, pieceIdGrid, tempId, [{ row, col }, m], cols, rows, dir)) growDirs.push(dir);
-          pieceIdGrid[m.row][m.col] = -1;
+          if (pieceCanExit(present, [{ row, col }, m], cols, rows, dir)) growDirs.push(dir);
         }
-        pieceIdGrid[row][col] = -1;
 
         const candidate: Candidate = { cell: { row, col }, dirs, growDirs };
         (growDirs.length > 0 ? growable : singletonOnly).push(candidate);
@@ -607,7 +602,7 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
       let extended = false;
       for (const candidate of orderedOptions) {
         pieceIdGrid[candidate.row][candidate.col] = id;
-        if (pieceCanExit(present, pieceIdGrid, id, [...cells, candidate], cols, rows, direction)) {
+        if (pieceCanExit(present, [...cells, candidate], cols, rows, direction)) {
           cells.push(candidate);
           cur = candidate;
           extended = true;
@@ -640,12 +635,8 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
  */
 function verifySolvable(pieces: Piece[], cols: number, rows: number): boolean {
   const present: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
-  const pieceIdGrid: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
   for (const piece of pieces) {
-    for (const cell of piece.cells) {
-      present[cell.row][cell.col] = true;
-      pieceIdGrid[cell.row][cell.col] = piece.id;
-    }
+    for (const cell of piece.cells) present[cell.row][cell.col] = true;
   }
 
   const remaining = new Set(pieces.map((p) => p.id));
@@ -654,7 +645,7 @@ function verifySolvable(pieces: Piece[], cols: number, rows: number): boolean {
     progress = false;
     for (const id of remaining) {
       const piece = pieces[id];
-      if (pieceCanExit(present, pieceIdGrid, id, piece.cells, cols, rows, piece.direction)) {
+      if (pieceCanExit(present, piece.cells, cols, rows, piece.direction)) {
         for (const cell of piece.cells) present[cell.row][cell.col] = false;
         remaining.delete(id);
         progress = true;
