@@ -20,29 +20,27 @@ interface MazeGameViewProps {
 const ZOOM_STEPS = [1, 1.5, 2.25];
 
 /**
- * The smallest a cell is ever drawn, in CSS pixels. Shrinking the whole
- * board to fit the screen works while boards are small, but past a certain
- * size it just makes every cell smaller — a late board and a mid board end
- * up occupying the same rectangle, only harder to read and to hit. Below
- * this size the board stops shrinking and starts scrolling instead, so the
- * canvas grows with the puzzle.
+ * The biggest a cell is ever drawn, in CSS pixels. Without a cap a small
+ * board is blown up to fill the screen — level 1's handful of cells came
+ * out over 100px each — so every board ends up the same rectangle however
+ * little is in it. Capping the cell size lets the canvas grow with the
+ * puzzle instead: a small board draws small and centred, and boards keep
+ * getting visibly bigger until they fill the space available.
  */
-const MIN_CELL_PX = 34;
+const MAX_CELL_PX = 40;
 
 /**
  * How wide to draw the board, given the space available.
  *
- * Small boards fit entirely, on both axes, so the player can see the whole
- * puzzle at once. Once fitting would push cells below MIN_CELL_PX the board
- * fills the frame's width instead and runs off the bottom, scrolling — much
- * better than the same board squeezed into the same rectangle with tiny
- * cells. And if even the full width can't give cells a usable size, the
- * board goes wider than the frame and pans sideways too.
+ * The whole board is always visible: it never exceeds the space it is given
+ * on either axis, so there is nothing to scroll to until the player zooms
+ * in. Within that, the canvas is sized by the puzzle rather than always
+ * filling the frame — cells are drawn at MAX_CELL_PX until the board grows
+ * big enough that fitting it needs them smaller.
  */
 export function boardWidthFor(frameWidth: number, frameHeight: number, cols: number, rows: number): number {
   const fitBothAxes = Math.min(frameWidth, (frameHeight * cols) / rows);
-  if (fitBothAxes / cols >= MIN_CELL_PX) return fitBothAxes;
-  return Math.max(frameWidth, cols * MIN_CELL_PX);
+  return Math.min(fitBothAxes, cols * MAX_CELL_PX);
 }
 
 /**
@@ -113,12 +111,10 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
         </div>
       </div>
 
-      {/* The board takes whatever height is left and scrolls whenever it
-          outgrows that — either because the puzzle is big (see
-          boardWidthFor) or because it's zoomed in — so the booster bar below
-          always stays put and reachable. `m-auto` centres a board that fits
-          without making the overflow of one that doesn't unreachable, which
-          centring on the flex container would. */}
+      {/* The board takes whatever height is left and scrolls only once
+          zoomed in, so the booster bar below always stays put and reachable.
+          `m-auto` centres the board without making a zoomed-in one's
+          overflow unreachable, which centring on the flex container would. */}
       <div ref={frameRef} className="flex-1 min-h-0 overflow-auto flex">
         <div className="m-auto shrink-0" style={{ width: fittedWidth ? fittedWidth * zoom : "100%" }}>
           <MazeCanvas

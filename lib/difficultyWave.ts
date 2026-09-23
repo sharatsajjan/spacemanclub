@@ -12,20 +12,20 @@ const CYCLE_LEN = 5;
 const TIERS: DifficultyTier[] = ["Easy", "Medium", "Medium", "Hard", "Hardest"];
 const TIER_BONUS = [0, 1, 1, 2, 3];
 /**
- * The board size itself is hard-capped at MAX_COLS x MAX_ROWS (760 cells) by
+ * The board size itself is hard-capped at MAX_COLS x MAX_ROWS by
  * gridForLevel below, once targetCells reaches that — that's the real
  * ceiling, not this constant. MAX_SCALE just needs to sit safely above it so
  * the scale formula's own clamp never kicks in earlier than the board-size
  * clamp already does.
  */
-const MAX_SCALE = 86;
+const MAX_SCALE = 48;
 
-/** The biggest board the game ever builds, reached around level 120. Bigger
- * than the play area on a phone: past a certain size the board stops
- * shrinking to fit and starts scrolling instead (see MazeGameView), so the
- * ceiling is set by how long a level should take, not by the screen. */
-const MAX_COLS = 20;
-const MAX_ROWS = 38;
+/** The biggest board the game ever builds, reached around level 120.
+ * The whole board is always on screen (see MazeGameView), so the ceiling is
+ * set by the screen: past this the cells get too small to read or hit
+ * comfortably on a phone. */
+const MAX_COLS = 15;
+const MAX_ROWS = 28;
 
 /**
  * Board size climbs in two gears. The first few cycles grow fast, so a new
@@ -37,7 +37,7 @@ const MAX_ROWS = 38;
  */
 const FAST_CYCLES = 3;
 const FAST_STEP = 11;
-const SLOW_STEP = 2.1;
+const SLOW_STEP = 0.24;
 
 function cycleBaseFor(cycle: number): number {
   if (cycle <= FAST_CYCLES) return 9 + cycle * FAST_STEP;
