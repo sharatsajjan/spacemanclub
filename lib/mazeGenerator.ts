@@ -23,6 +23,11 @@ interface Complexity {
   /** Roughly how many cells each spiral region covers (one long piece per
    * region). */
   spiralRegionCells: number;
+  /** How often a piece's exit direction is chosen to run back over pieces
+   * already built, rather than at random. See pickExitDirection: this is
+   * what decides whether the board is a pile of independently-clearable
+   * pieces or a puzzle with an order to work out. */
+  dependencyBias: number;
 }
 
 /**
@@ -32,10 +37,10 @@ interface Complexity {
  * more complex "Level 171 / Super Hard" should feel than "Level 21".
  */
 const COMPLEXITY_BY_TIER: Record<DifficultyTier, Complexity> = {
-  Easy: { minLen: 2, maxLen: 4, turnBias: 0.35, spiralCoverage: 0.45, spiralRegionCells: 5 },
-  Medium: { minLen: 2, maxLen: 4, turnBias: 0.6, spiralCoverage: 0.55, spiralRegionCells: 5 },
-  Hard: { minLen: 2, maxLen: 4, turnBias: 0.75, spiralCoverage: 0.6, spiralRegionCells: 5 },
-  Hardest: { minLen: 2, maxLen: 4, turnBias: 0.85, spiralCoverage: 0.75, spiralRegionCells: 5 },
+  Easy: { minLen: 3, maxLen: 6, turnBias: 0.35, spiralCoverage: 0.45, spiralRegionCells: 6, dependencyBias: 0.75 },
+  Medium: { minLen: 3, maxLen: 8, turnBias: 0.6, spiralCoverage: 0.55, spiralRegionCells: 7, dependencyBias: 0.9 },
+  Hard: { minLen: 4, maxLen: 10, turnBias: 0.75, spiralCoverage: 0.6, spiralRegionCells: 8, dependencyBias: 0.97 },
+  Hardest: { minLen: 4, maxLen: 12, turnBias: 0.85, spiralCoverage: 0.75, spiralRegionCells: 9, dependencyBias: 1 },
 };
 
 function directionBetween(from: Coord, to: Coord): Coord {
@@ -61,10 +66,149 @@ function manhattan(a: Coord, b: Coord): number {
  * independent way out. */
 const GROWTH_LOCALITY_RADIUS = 2;
 
+/** How many about-to-be-orphaned cells one piece will pick up on its way
+ * past, before it's grown far beyond the length its tier asked for. */
+const STRANDED_SWEEP_LIMIT = 3;
+
+/** A piece has to be at least this long to be worth making a bottleneck of:
+ * a short one lies across too few lanes for anything to hang off it. */
+const KEYSTONE_MIN_LEN = 5;
+/** How many pieces are built trying to hang off a keystone before another is
+ * chosen. This is roughly how many pieces one bottleneck releases. */
+const KEYSTONE_FAN = 7;
+/** How often a long piece is made a keystone rather than left ordinary. */
+const KEYSTONE_CHANCE = 0.6;
+
 /** Share of spiral blocks left oversized, to become long nested coils. */
 const FEATURE_BLOCK_CHANCE = 0.18;
 /** Share of blocks laid out as a comb rather than a coil. */
 const SERPENTINE_CHANCE = 0.4;
+
+/**
+ * The highest-numbered already-built piece in a head's exit lane, or -1 if
+ * the lane is clear of them.
+ *
+ * Pieces are built in the order they'll be cleared, so this one number is
+ * what decides the puzzle's shape: a piece becomes tappable the moment the
+ * LAST piece in its lane is gone, and in build order that is the highest id.
+ * -1 means nothing blocks it and it's tappable from the opening move.
+ *
+ * It is the id, not the number of pieces crossed, that matters. A piece
+ * crossing six earlier pieces is still unlocked by exactly one of them —
+ * the newest — and the other five are irrelevant to when it opens up.
+ */
+function laneBlocker(head: Coord, dir: Direction, pieceIdGrid: number[][], cols: number, rows: number): number {
+  const d = delta(dir);
+  let best = -1;
+  let r = head.row + d.row;
+  let c = head.col + d.col;
+  while (r >= 0 && r < rows && c >= 0 && c < cols) {
+    const id = pieceIdGrid[r][c];
+    if (id > best) best = id;
+    r += d.row;
+    c += d.col;
+  }
+  return best;
+}
+
+/**
+ * Which way a new piece points.
+ *
+ * Picking at random left most pieces exiting straight to the nearest edge
+ * over empty space: a ~90 piece board opened with 36 legal moves, no piece
+ * unlocked more than three others, and nearly half gated nothing at all.
+ * There was a correct order, but nothing ever forced the player to find it.
+ *
+ * Two preferences fix that, both applied only `dependencyBias` of the time
+ * so boards keep some slack:
+ *
+ *  - With a keystone set, prefer a lane whose last blocker is exactly that
+ *    piece. Several pieces in a row pointing back through the same one make
+ *    it a genuine bottleneck: nothing behind it moves until it goes, and
+ *    then several things open at once.
+ *  - Otherwise prefer the lane with the newest blocker, which hands the
+ *    piece the longest possible wait and keeps the number of simultaneously
+ *    legal moves down.
+ *
+ * Solvability is untouched either way: a lane can only cross pieces built
+ * BEFORE this one, and those are cleared first by construction.
+ */
+function candidateBlocker(
+  candidate: Candidate,
+  pieceIdGrid: number[][],
+  cols: number,
+  rows: number
+): number {
+  let best = -1;
+  for (const dir of candidate.growDirs) {
+    const b = laneBlocker(candidate.cell, dir, pieceIdGrid, cols, rows);
+    if (b > best) best = b;
+  }
+  return best;
+}
+
+/**
+ * Which cell the next piece is grown from.
+ *
+ * This, not the exit direction, is where a board's dependency structure
+ * actually comes from. By the time a cell is a growable candidate its
+ * direction is all but decided — measured over a full board, a candidate
+ * has 1.06 legal directions on average, so there is nothing to choose
+ * between. Choosing the CELL is choosing which piece the new one will
+ * wait on.
+ *
+ * So candidates are ranked by their last blocker, the same way directions
+ * were: behind the current keystone first, then whichever waits on the
+ * newest piece. Picking at random instead peeled the board like an onion —
+ * every piece on the perimeter independently tappable, ~36 legal opening
+ * moves, and no piece that mattered more than any other.
+ */
+function pickCandidate(
+  pool: Candidate[],
+  pieceIdGrid: number[][],
+  cols: number,
+  rows: number,
+  rand: () => number,
+  dependencyBias: number,
+  keystoneId: number
+): Candidate {
+  const shuffled = shuffle(pool, rand);
+  if (rand() >= dependencyBias) return shuffled[0];
+
+  // Match the keystone against EVERY direction the candidate could take, not
+  // against its best one: a candidate with a lane behind the keystone and
+  // another behind some newer piece scores as the newer piece, which hid
+  // most of the pieces that could have hung off the keystone.
+  if (keystoneId >= 0) {
+    const behindKeystone = shuffled.find((candidate) =>
+      candidate.growDirs.some((dir) => laneBlocker(candidate.cell, dir, pieceIdGrid, cols, rows) === keystoneId)
+    );
+    if (behindKeystone) return behindKeystone;
+  }
+  const scored = shuffled.map((candidate) => ({ candidate, blocker: candidateBlocker(candidate, pieceIdGrid, cols, rows) }));
+  return scored.reduce((a, b) => (b.blocker > a.blocker ? b : a)).candidate;
+}
+
+function pickExitDirection(
+  head: Coord,
+  dirs: Direction[],
+  pieceIdGrid: number[][],
+  cols: number,
+  rows: number,
+  rand: () => number,
+  dependencyBias: number,
+  keystoneId: number
+): Direction {
+  const shuffled = shuffle(dirs, rand);
+  if (rand() >= dependencyBias) return shuffled[0];
+
+  const scored = shuffled.map((dir) => ({ dir, blocker: laneBlocker(head, dir, pieceIdGrid, cols, rows) }));
+  if (keystoneId >= 0) {
+    const behindKeystone = scored.find((s) => s.blocker === keystoneId);
+    if (behindKeystone) return behindKeystone.dir;
+  }
+  return scored.reduce((a, b) => (b.blocker > a.blocker ? b : a)).dir;
+}
 
 function directionFromDelta(d: Coord): Direction | null {
   if (d.row === -1 && d.col === 0) return "up";
@@ -466,11 +610,15 @@ function tryRescue(
  *     1% of the time and essentially never survives even a couple of
  *     retries.
  */
-function buildPieces(cols: number, rows: number, rand: () => number, complexity: Complexity): Piece[] {
+function buildPieces(cols: number, rows: number, rand: () => number, complexity: Complexity): Piece[] | null {
   const present: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(true));
   const pieceIdGrid: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
   const pieces: Piece[] = [];
   let focus: Coord | null = null;
+  /** The piece the next few are being built to hang off, and how many of
+   * them are left to build. -1 = none currently. */
+  let keystoneId = -1;
+  let keystoneBudget = 0;
 
   const spiralRegions = pickSpiralRegions(cols, rows, rand, complexity.spiralCoverage, complexity.spiralRegionCells);
   const reserved: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
@@ -516,7 +664,7 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
 
     if (growable.length === 0) {
       let resolvedAny = false;
-      const stillStuck: Coord[] = [];
+      const stillStuck: Candidate[] = [];
       for (const cand of singletonOnly) {
         if (!present[cand.cell.row][cand.cell.col]) continue; // resolved earlier in this same pass
 
@@ -528,25 +676,33 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
           resolvedAny = true;
           continue;
         }
-        stillStuck.push(cand.cell);
+        stillStuck.push(cand);
       }
 
       if (resolvedAny) continue; // re-scan fresh next pass — merges may have unlocked more growth
 
       if (stillStuck.length > 0) {
-        stillStuck.sort((a, b) => ringOf(a.row, a.col, cols, rows) - ringOf(b.row, b.col, cols, rows));
-        for (const cell of stillStuck) {
+        stillStuck.sort((a, b) => ringOf(a.cell.row, a.cell.col, cols, rows) - ringOf(b.cell.row, b.cell.col, cols, rows));
+        for (const cand of stillStuck) {
+          const cell = cand.cell;
+          // Point it down a lane that is actually clear RIGHT NOW, re-checked
+          // against the current board rather than trusted from the scan.
+          //
+          // This used to aim the cell at its nearest edge on the reasoning
+          // that the way out only crosses lower rings, which are cleared by
+          // then. That does not hold: a lower-ring cell can still belong to a
+          // piece not yet built — a reserved spiral region, or anything the
+          // scan hasn't reached — and the result was a piece permanently
+          // pointed into another. One board produced a straight deadlock, a
+          // 1-cell piece pointing right into a 7-cell piece pointing left,
+          // each waiting on the other, which no amount of play could undo.
+          const usable = DIRECTIONS.filter((dir) => pieceCanExit(present, [cell], cols, rows, dir));
+          if (usable.length === 0) return null; // unplaceable — abandon this attempt
+          const nearest = (dir: Direction) =>
+            dir === "up" ? cell.row : dir === "down" ? rows - 1 - cell.row : dir === "left" ? cell.col : cols - 1 - cell.col;
+          const best = Math.min(...usable.map(nearest));
+          const tied = usable.filter((dir) => nearest(dir) === best);
           const id = pieces.length;
-          const distUp = cell.row;
-          const distDown = rows - 1 - cell.row;
-          const distLeft = cell.col;
-          const distRight = cols - 1 - cell.col;
-          const min = Math.min(distUp, distDown, distLeft, distRight);
-          const tied: Direction[] = [];
-          if (distUp === min) tied.push("up");
-          if (distDown === min) tied.push("down");
-          if (distLeft === min) tied.push("left");
-          if (distRight === min) tied.push("right");
           pieces.push({ id, cells: [cell], direction: tied[Math.floor(rand() * tied.length)] });
           pieceIdGrid[cell.row][cell.col] = id;
           present[cell.row][cell.col] = false;
@@ -558,7 +714,7 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
 
     const nearby = focus ? growable.filter((c) => manhattan(c.cell, focus!) <= GROWTH_LOCALITY_RADIUS) : [];
     const pool = nearby.length > 0 ? nearby : growable;
-    const pick = pool[Math.floor(rand() * pool.length)];
+    const pick = pickCandidate(pool, pieceIdGrid, cols, rows, rand, complexity.dependencyBias, keystoneId);
     const id = pieces.length;
     const cells: Coord[] = [pick.cell];
     pieceIdGrid[pick.cell.row][pick.cell.col] = id;
@@ -571,7 +727,7 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
     const effMaxLen = Math.max(effMinLen, complexity.maxLen);
     const targetLen = effMinLen + Math.floor(rand() * (effMaxLen - effMinLen + 1));
     let cur = pick.cell;
-    const direction = pick.growDirs[Math.floor(rand() * pick.growDirs.length)];
+    const direction = pickExitDirection(pick.cell, pick.growDirs, pieceIdGrid, cols, rows, rand, complexity.dependencyBias, keystoneId);
     const d = delta(direction);
     const mandatory: Coord = { row: pick.cell.row - d.row, col: pick.cell.col - d.col };
     pieceIdGrid[mandatory.row][mandatory.col] = id;
@@ -614,11 +770,52 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
       if (!extended) break;
     }
 
+    // Sweep up as we go: a free cell touching this piece's tail that has no
+    // other free neighbour is about to become a lone 1-cell piece, so take
+    // it along instead. Stranding is the price of growing long pieces —
+    // they carve the board into odd remainders far more than short ones did
+    // — and mopping up afterwards salvages far fewer of them than simply
+    // not leaving them behind.
+    for (let swept = 0; swept < STRANDED_SWEEP_LIMIT; swept++) {
+      const tail = cells[cells.length - 1];
+      const isFree = (c: Coord) =>
+        c.row >= 0 && c.row < rows && c.col >= 0 && c.col < cols && present[c.row][c.col] && pieceIdGrid[c.row][c.col] === -1;
+      const orphan = DIRECTIONS.map((dir) => {
+        const dd = delta(dir);
+        return { row: tail.row + dd.row, col: tail.col + dd.col };
+      }).find((n) => isFree(n) && DIRECTIONS.every((dir) => {
+        const dd = delta(dir);
+        return !isFree({ row: n.row + dd.row, col: n.col + dd.col });
+      }));
+      if (!orphan) break;
+      pieceIdGrid[orphan.row][orphan.col] = id;
+      if (!pieceCanExit(present, [...cells, orphan], cols, rows, direction)) {
+        pieceIdGrid[orphan.row][orphan.col] = -1;
+        break;
+      }
+      cells.push(orphan);
+    }
+
     pieces.push({ id, cells, direction });
     for (const cell of cells) present[cell.row][cell.col] = false;
     focus = cells[cells.length - 1];
+
+    // Hand the next few pieces a bottleneck to hang off, once this one has
+    // had its run. Only a long piece is worth it — see KEYSTONE_MIN_LEN.
+    if (keystoneBudget > 0) keystoneBudget--;
+    if (keystoneBudget === 0 && cells.length >= KEYSTONE_MIN_LEN && rand() < KEYSTONE_CHANCE) {
+      keystoneId = id;
+      keystoneBudget = KEYSTONE_FAN;
+    }
   }
 
+  // Any cell the loop could not account for would be a hole in the tiling,
+  // and a hole is a cell that can never be cleared.
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (present[r][c]) return null;
+    }
+  }
   return pieces;
 }
 
@@ -655,24 +852,151 @@ function verifySolvable(pieces: Piece[], cols: number, rows: number): boolean {
   return remaining.size === 0;
 }
 
+/** Re-lays a piece list so every piece's id matches its index again, which
+ * the solver and the renderer both rely on. */
+function renumber(pieces: Piece[]): Piece[] {
+  return pieces.map((p, id) => ({ ...p, id }));
+}
+
+/**
+ * Folds leftover 1-cell pieces into a neighbour, so a board doesn't end up
+ * dotted with lone cells. Longer pieces strand more odd cells than short
+ * ones did, so this is what keeps lengthening them from costing tidiness.
+ *
+ * Folding into a piece that clears earlier is the safe direction — the cell
+ * then leaves sooner, and leaving sooner can only unblock other pieces,
+ * never strand one — so those hosts are tried first. A later host can work
+ * too though, and restricting it to the safe direction alone salvaged almost
+ * nothing, so every fold is simply simulated: the whole board is re-solved
+ * afterwards and the fold undone unless it still completes. That check, not
+ * the ordering argument, is what makes this safe.
+ */
+function absorbSingles(pieces: Piece[], cols: number, rows: number): Piece[] {
+  let current = pieces;
+  for (let guard = 0; guard < pieces.length; guard++) {
+    const single = current.find((p) => p.cells.length < MIN_PIECE_LEN);
+    if (!single) break;
+    const cell = single.cells[0];
+    // Any piece whose TAIL touches the cell. Not the head end: cells[0] is
+    // the head, and moving that would change where the piece exits from.
+    // Earlier-clearing hosts are tried first, since moving the cell earlier
+    // in the order can only unblock other pieces — but a later host is
+    // allowed too, because the simulation below is what actually decides.
+    const hosts = current
+      .filter((host) => {
+        if (host.id === single.id) return false;
+        const tail = host.cells[host.cells.length - 1];
+        return Math.abs(tail.row - cell.row) + Math.abs(tail.col - cell.col) === 1;
+      })
+      .sort((a, b) => (a.id < single.id ? 0 : 1) - (b.id < single.id ? 0 : 1));
+    let folded: Piece[] | null = null;
+    for (const host of hosts) {
+      const trial = renumber(
+        current
+          .filter((p) => p.id !== single.id)
+          .map((p) => (p.id === host.id ? { ...p, cells: [...p.cells, cell] } : p))
+      );
+      if (verifySolvable(trial, cols, rows)) {
+        folded = trial;
+        break;
+      }
+    }
+    if (!folded) {
+      // Nothing could take the cell, so try the reverse: have the single
+      // TAKE the tail cell of a long neighbour, which turns a 1-cell piece
+      // into a 2-cell one at the cost of shortening a piece that can spare
+      // it. Only the tail can move — cells[0] is the head, and the rest of
+      // the path has to stay contiguous.
+      for (const donor of current) {
+        if (donor.id === single.id || donor.cells.length <= MIN_PIECE_LEN) continue;
+        const tail = donor.cells[donor.cells.length - 1];
+        if (Math.abs(tail.row - cell.row) + Math.abs(tail.col - cell.col) !== 1) continue;
+        const trial = renumber(
+          current.map((p) =>
+            p.id === donor.id
+              ? { ...p, cells: p.cells.slice(0, -1) }
+              : p.id === single.id
+                ? { ...p, cells: [...p.cells, tail] }
+                : p
+          )
+        );
+        if (verifySolvable(trial, cols, rows)) {
+          folded = trial;
+          break;
+        }
+      }
+    }
+    if (!folded) break; // this single can't be placed; leave it and stop
+    current = folded;
+  }
+  return current;
+}
+
+/**
+ * How good a finished board is, lower being better, or null if it is not
+ * usable at all. The score is its number of 1-cell pieces.
+ *
+ * Solvability is the only hard requirement, and it is checked by simulating
+ * the board to completion rather than trusted from the construction order.
+ * A stray 1-cell piece is a blemish, not a fault: rejecting boards outright
+ * for having one used to throw away 200 of every 203 attempts once pieces
+ * got longer (longer pieces strand more odd cells), which burned through
+ * every retry and dropped good boards for a far worse fallback.
+ */
+function boardScore(pieces: Piece[] | null, cols: number, rows: number): number | null {
+  if (!pieces || !verifySolvable(pieces, cols, rows)) return null;
+  return pieces.filter((p) => p.cells.length < MIN_PIECE_LEN).length;
+}
+
+/**
+ * A board that is correct by inspection: one piece per row, spanning the
+ * full width, each leaving by the near end. Every piece's lane runs off the
+ * board immediately, so all of them are clearable from the first move and
+ * the board cannot deadlock.
+ *
+ * This is a floor, not a puzzle, and in testing nothing reaches it — it
+ * exists so that "no acceptable board" can never mean "hand the player a
+ * board they cannot finish".
+ */
+function fallbackBoard(cols: number, rows: number): Piece[] {
+  return Array.from({ length: rows }, (_, row) => {
+    const leftward = row % 2 === 0;
+    const cells: Coord[] = Array.from({ length: cols }, (_, i) => ({ row, col: leftward ? i : cols - 1 - i }));
+    return { id: row, cells, direction: leftward ? "left" : ("right" as Direction) };
+  });
+}
+
 export function generatePuzzleForLevel(level: number, seed: number): Puzzle {
   const { cols, rows } = gridForLevel(level);
   const complexity = COMPLEXITY_BY_TIER[tierForLevel(level)];
 
-  // buildPieces already makes a single-cell piece exceptionally rare (a
-  // fraction of a percent of pieces, in well under 10% of boards) rather
-  // than eliminating it outright, so retry the whole build with a different
-  // sub-seed on the rare board that still has one — empirically this
-  // resolves within 1-2 attempts almost every time. Also re-verified as
-  // solvable by simulation before ever reaching the player, even though
-  // construction already guarantees it — belt and suspenders.
-  let pieces = buildPieces(cols, rows, mulberry32(seed), complexity);
-  for (
-    let attempt = 1;
-    attempt < MAX_GENERATION_ATTEMPTS && (pieces.some((p) => p.cells.length < MIN_PIECE_LEN) || !verifySolvable(pieces, cols, rows));
-    attempt++
-  ) {
-    pieces = buildPieces(cols, rows, mulberry32(seed + attempt * 104729), complexity);
+  let best: Piece[] | null = null;
+  let bestScore = Infinity;
+  const consider = (candidate: Piece[] | null): boolean => {
+    const score = boardScore(candidate, cols, rows);
+    if (score === null) return false;
+    if (score < bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+    return bestScore === 0; // nothing left to improve
+  };
+
+  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
+    const built = buildPieces(cols, rows, mulberry32(seed + attempt * 104729), complexity);
+    if (consider(built && absorbSingles(built, cols, rows))) break;
+  }
+
+  // Long chained pieces are what make a board interesting and also what makes
+  // it hard to lay out. If the tier's settings never produced a usable board
+  // for this seed, a tamer one almost always will — a plainer puzzle beats a
+  // broken one.
+  if (best === null) {
+    const relaxed: Complexity = { ...complexity, dependencyBias: 0, minLen: 2, maxLen: Math.min(complexity.maxLen, 5) };
+    for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
+      const built = buildPieces(cols, rows, mulberry32(seed + 7919 + attempt * 104729), relaxed);
+      if (consider(built && absorbSingles(built, cols, rows))) break;
+    }
   }
 
   return {
@@ -680,8 +1004,10 @@ export function generatePuzzleForLevel(level: number, seed: number): Puzzle {
     level,
     cols,
     rows,
-    pieces,
+    pieces: best ?? fallbackBoard(cols, rows),
     tier: tierForLevel(level),
     seed,
   };
 }
+
+

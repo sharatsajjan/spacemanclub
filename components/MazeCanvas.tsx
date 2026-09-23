@@ -24,16 +24,18 @@ const ARROW_ROTATION: Record<Direction, number> = { up: 0, right: 90, down: 180,
  * noticeably wider than the line so the arrowhead still reads clearly at
  * this thinner stroke, with its base at the cell center so it meets the
  * line's own end with no gap or visible seam. */
-const ARROW_PATH = "M0 -0.44 L0.26 -0.04 L-0.26 -0.04 Z";
-const ARROW_HALO_PATH = "M0 -0.5 L0.32 -0.01 L-0.32 -0.01 Z";
+const ARROW_PATH = "M0 -0.42 L0.20 -0.06 L-0.20 -0.06 Z";
+const ARROW_HALO_PATH = "M0 -0.48 L0.25 -0.03 L-0.25 -0.03 Z";
 /**
  * A slim line with a generous channel of background on either side, so the
  * board reads as a drawn maze of routed pipes rather than a block of
  * colour — every cell still belongs to some piece (the puzzle is a full
- * tiling), the runs are just drawn thin.
+ * tiling), the runs are just drawn thin. Thin enough that the dot under
+ * each cell centre stays visible alongside the line rather than being
+ * swallowed by it.
  */
-const LINE_WIDTH = 0.22;
-const HALO_WIDTH = 0.34;
+const LINE_WIDTH = 0.155;
+const HALO_WIDTH = 0.265;
 /** Radius of the smooth quarter-turn drawn at each bend. At this stroke
  * width a plain mitred/round join reads as a hard corner, so bends are
  * curved explicitly. */
@@ -43,8 +45,17 @@ const CORNER_RADIUS = 0.34;
  * instead of stopping halfway back at the center. */
 const TAIL_EXTEND = 0.34;
 /** Fallback fill for the rare 1-cell piece (no line to stroke at all). */
-const SINGLE_CELL_FILL = 0.24;
-const SINGLE_CELL_HALO_FILL = 0.36;
+const SINGLE_CELL_FILL = 0.17;
+const SINGLE_CELL_HALO_FILL = 0.28;
+/** Radius of the dot marking each cell centre. Every line runs from centre
+ * to centre, so the dots are the lattice the whole maze is pegged to.
+ *
+ * They sit UNDER the pieces, and the board is a full tiling, so at the
+ * start of a level almost every dot is hidden beneath the line running
+ * through its cell. The lattice emerges as pieces clear, which is what
+ * keeps emptied space reading as part of the grid rather than as a hole. */
+const DOT_RADIUS = 0.07;
+
 /** Fixed amber/gold, independent of theme — same role as the always-red danger flash. */
 const HINT_COLOR = "#e0983d";
 /** Must match the length of every theme's piecePalette. */
@@ -333,6 +344,18 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
         viewBox={`0 0 ${cols} ${rows}`}
         preserveAspectRatio="none"
       >
+        {/* The lattice the maze is drawn on: one dot per cell centre, under
+            everything else. Every piece's line runs centre to centre, so
+            each dot either sits beneath a line or marks a cell that has
+            been cleared. */}
+        <g fill="var(--sub2)" opacity={0.5}>
+          {Array.from({ length: rows }).flatMap((_, r) =>
+            Array.from({ length: cols }).map((__, c) => (
+              <circle key={`dot-${r}-${c}`} cx={c + 0.5} cy={r + 0.5} r={DOT_RADIUS} />
+            ))
+          )}
+        </g>
+
         {/* Pass 1: every piece's background-colored halo, drawn first so no
             halo can ever paint over another piece's already-drawn line. Two
             pieces whose lines touch or run close together must never read as
