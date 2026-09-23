@@ -45,24 +45,33 @@ interface Complexity {
    * again. See the growth loop: this is what makes a piece read as long
    * runs joined by clean corners instead of a row of one-cell teeth. */
   minStraightRun: number;
+  /** Share of pieces drawn from the long end of the range instead of the
+   * short end. The rest come out short, so a board carries both. */
+  longPieceChance: number;
+  /** Longest a "short" piece gets. Short pieces are not filler: they are
+   * quick to read but there are many of them, and they pack into the gaps
+   * the long ones leave. */
+  shortPieceCap: number;
 }
 
 /**
  * How long and how bendy pieces are, scaled by tier.
  *
- * The lengths look extreme next to a grid this size — a Hardest piece
- * averages about eighteen cells — and that is the point. A board of short
- * pieces is a board where almost everything is tappable at once: there is a
- * correct order but no reason to look for it. Longer pieces mean fewer of
- * them, each lying across more lanes, and the number of legal moves at any
- * moment falls out of that. Easy tiers stay short on purpose, as the
- * breather in the difficulty wave.
+ * minLen stays at 2 for every tier and the range is wide. Length is chosen
+ * from one END of that range or the other — see the growth loop — so a board
+ * carries short pieces and long ones together rather than a single size.
+ * That mix is the point: long pieces lie across many lanes and hold the
+ * board up, short ones are quick to read but there are a lot of them and
+ * they pack into the gaps the long ones leave. A board where every piece is
+ * the same size is easier to read whatever that size is.
+ *
+ * Easy tiers lean short, as the breather in the difficulty wave.
  */
 const COMPLEXITY_BY_TIER: Record<DifficultyTier, Complexity> = {
-  Easy: { minLen: 6, maxLen: 14, turnBias: 0.15, spiralCoverage: 0.3, spiralRegionCells: 16, dependencyBias: 0.75, minStraightRun: 5 },
-  Medium: { minLen: 8, maxLen: 18, turnBias: 0.2, spiralCoverage: 0.3, spiralRegionCells: 25, dependencyBias: 0.9, minStraightRun: 6 },
-  Hard: { minLen: 9, maxLen: 22, turnBias: 0.2, spiralCoverage: 0.32, spiralRegionCells: 34, dependencyBias: 0.97, minStraightRun: 7 },
-  Hardest: { minLen: 10, maxLen: 26, turnBias: 0.25, spiralCoverage: 0.35, spiralRegionCells: 42, dependencyBias: 1, minStraightRun: 8 },
+  Easy: { minLen: 2, maxLen: 16, turnBias: 0.15, spiralCoverage: 0.3, spiralRegionCells: 16, dependencyBias: 0.75, minStraightRun: 5, longPieceChance: 0.3, shortPieceCap: 5 },
+  Medium: { minLen: 2, maxLen: 24, turnBias: 0.2, spiralCoverage: 0.3, spiralRegionCells: 25, dependencyBias: 0.9, minStraightRun: 6, longPieceChance: 0.4, shortPieceCap: 6 },
+  Hard: { minLen: 2, maxLen: 32, turnBias: 0.2, spiralCoverage: 0.32, spiralRegionCells: 34, dependencyBias: 0.97, minStraightRun: 7, longPieceChance: 0.5, shortPieceCap: 6 },
+  Hardest: { minLen: 2, maxLen: 40, turnBias: 0.25, spiralCoverage: 0.35, spiralRegionCells: 42, dependencyBias: 1, minStraightRun: 8, longPieceChance: 0.55, shortPieceCap: 7 },
 };
 
 function directionBetween(from: Coord, to: Coord): Coord {
@@ -779,7 +788,19 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
     // puzzle's tier: harder tiers target longer pieces.
     const effMinLen = Math.max(2, complexity.minLen);
     const effMaxLen = Math.max(effMinLen, complexity.maxLen);
-    const targetLen = effMinLen + Math.floor(rand() * (effMaxLen - effMinLen + 1));
+    // Draw from one end of the range or the other, rather than uniformly
+    // across it, so a board carries both kinds. Raising the MINIMUM length
+    // to get longer pieces is what went wrong before: it removed the short
+    // ones instead of adding long ones, and a board of pieces that are all
+    // the same size is easier to read whatever that size is. A mix means
+    // more pieces, more of them lying across each other, and no single
+    // glance that takes in the whole board.
+    const longEnd = Math.max(effMinLen, Math.round(effMaxLen * 0.55));
+    const shortEnd = Math.max(effMinLen, Math.min(complexity.shortPieceCap, effMaxLen));
+    const targetLen =
+      rand() < complexity.longPieceChance
+        ? longEnd + Math.floor(rand() * (effMaxLen - longEnd + 1))
+        : effMinLen + Math.floor(rand() * (shortEnd - effMinLen + 1));
     let cur = pick.cell;
     const direction = pickExitDirection(pick.cell, pick.growDirs, pieceIdGrid, cols, rows, rand, complexity.dependencyBias, keystoneId);
     const d = delta(direction);
@@ -820,7 +841,8 @@ function buildPieces(cols: number, rows: number, rand: () => number, complexity:
       // itself the growth turned at almost every opportunity — 71% of its
       // straight runs were a single cell, which draws a comb of one-cell
       // teeth rather than the long runs and clean corners a maze is made of.
-      const mustRunOn = straightSoFar < complexity.minStraightRun;
+      const runNeeded = Math.max(2, Math.min(complexity.minStraightRun, Math.floor(targetLen / 2)));
+      const mustRunOn = straightSoFar < runNeeded;
       const keepsGoing = (c: Coord) => sameDirection(directionBetween(cur, c), prevDir);
 
       // Warnsdorff's rule, the standard way to grow a long path through a
