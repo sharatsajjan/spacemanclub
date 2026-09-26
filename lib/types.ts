@@ -43,7 +43,7 @@ export interface LevelResult {
   pictureId?: string;
 }
 
-export type ThemeId = "linen" | "slate" | "sage" | "dusk" | "ocean";
+export type ThemeId = "linen" | "slate" | "sage" | "dusk" | "ocean" | "sepia";
 
 export interface PlayerProfile {
   currentLevel: number;
@@ -58,4 +58,9 @@ export interface PlayerProfile {
   playerName: string;
   /** Ids of pictures uncovered by finishing a level, in the order first found. */
   collectedPictures: string[];
+  /** Whether this profile has already been moved off a superseded default
+   * theme. Without it the move would repeat on every load, and a player who
+   * deliberately picked the old default would have it taken away again each
+   * time. See loadProfile. */
+  themeDefaultMigrated?: boolean;
 }

@@ -58,8 +58,6 @@ const SINGLE_CELL_HALO_FILL = 0.28;
  * frame and the maze reads as drawn on it. */
 const DOT_RADIUS = 0.045;
 
-/** Fixed amber/gold, independent of theme — same role as the always-red danger flash. */
-const HINT_COLOR = "#e0983d";
 /** Must match the length of every theme's piecePalette. */
 const PALETTE_SIZE = 6;
 
@@ -417,7 +415,7 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
           if (!isPresent && !exitDir) return null;
           const isFlashing = flashPieceId === piece.id;
           const isHinted = hintPieceId === piece.id;
-          const color = isFlashing ? "var(--danger)" : isHinted ? HINT_COLOR : `var(--piece-${pieceColors[piece.id]})`;
+          const color = isFlashing ? "var(--danger)" : isHinted ? "var(--hint)" : `var(--piece-${pieceColors[piece.id]})`;
           const path = buildPiecePath(piece, head);
           const rotation = ARROW_ROTATION[piece.direction];
 

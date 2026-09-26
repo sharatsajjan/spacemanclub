@@ -1,5 +1,5 @@
 import { LevelResult, PlayerProfile } from "./types";
-import { DEFAULT_THEME } from "./themes";
+import { DEFAULT_THEME, SUPERSEDED_DEFAULT_THEME } from "./themes";
 
 const PROFILE_KEY = "arrowflow.profile.v2";
 export const MAX_LIVES = 3;
@@ -17,6 +17,7 @@ export function defaultProfile(): PlayerProfile {
     theme: DEFAULT_THEME,
     playerName: "Player",
     collectedPictures: [],
+    themeDefaultMigrated: true,
   };
 }
 
@@ -40,7 +41,29 @@ export function loadProfile(): PlayerProfile {
     const raw = window.localStorage.getItem(PROFILE_KEY);
     if (!raw) return defaultProfile();
     const parsed = JSON.parse(raw);
-    return refillLives({ ...defaultProfile(), ...parsed });
+    // Read the flag off the RAW saved object, not the merged profile: a
+    // legacy profile has no such key, and merging over defaultProfile would
+    // hand it the default's "already done" and skip the move entirely.
+    const alreadyMigrated = parsed?.themeDefaultMigrated === true;
+    const profile = refillLives({ ...defaultProfile(), ...parsed });
+    // Almost nobody opens the theme picker, so a saved theme matching the old
+    // default was inherited rather than chosen — and changing DEFAULT_THEME
+    // alone would leave every existing player on it forever. Move those
+    // forward once; any other saved theme was picked, so leave it.
+    //
+    // Once only, and recorded: otherwise this runs on every load and a player
+    // who goes and picks the old theme on purpose has it taken away again the
+    // next time they open the game.
+    if (!alreadyMigrated) {
+      const migrated: PlayerProfile = {
+        ...profile,
+        theme: profile.theme === SUPERSEDED_DEFAULT_THEME ? DEFAULT_THEME : profile.theme,
+        themeDefaultMigrated: true,
+      };
+      saveProfile(migrated);
+      return migrated;
+    }
+    return profile;
   } catch {
     return defaultProfile();
   }

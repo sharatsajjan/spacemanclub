@@ -18,6 +18,13 @@ export interface Theme {
   chip: string;
   danger: string;
   /**
+   * Colour a hinted piece is drawn in. Per theme rather than fixed, because
+   * it has to stand out against THAT theme's board and against its own piece
+   * colours. The fixed amber this replaced managed 2.07:1 on a cream board —
+   * the one highlight a struggling player leans on, almost invisible.
+   */
+  hint: string;
+  /**
    * Colors the pieces are drawn in. Adjacent pieces are always given
    * different entries (see assignPieceColors), so a board of 80-odd pieces
    * reads as separate shapes instead of one flat mass — with everything in
@@ -46,6 +53,7 @@ export const THEMES: Theme[] = [
     btnText: "#fdf6ea",
     chip: "rgba(90,60,30,0.08)",
     danger: "#c0483f",
+    hint: "#e0983d",
     piecePalette: ["#8a5a2f", "#b0743a", "#a35c52", "#7d7a45", "#6f7f66", "#9c6a80"],
   },
   {
@@ -65,6 +73,7 @@ export const THEMES: Theme[] = [
     btnText: "#1b1a2e",
     chip: "rgba(201,168,106,0.14)",
     danger: "#e08c93",
+    hint: "#e0983d",
     piecePalette: ["#c9a86a", "#e0a06a", "#e08c93", "#8fb6e0", "#89c9a8", "#b9a0d9"],
   },
   {
@@ -84,6 +93,7 @@ export const THEMES: Theme[] = [
     btnText: "#f4f7ec",
     chip: "rgba(60,90,45,0.1)",
     danger: "#a35c52",
+    hint: "#e0983d",
     piecePalette: ["#4f6b3f", "#6f9150", "#8a6b3f", "#3f7a6b", "#a35c52", "#5f7a8a"],
   },
   {
@@ -103,6 +113,7 @@ export const THEMES: Theme[] = [
     btnText: "#fbf1f4",
     chip: "rgba(122,74,92,0.1)",
     danger: "#a35c52",
+    hint: "#e0983d",
     piecePalette: ["#7a4a5c", "#a3527a", "#a35c52", "#8a6b3f", "#6b5c8a", "#4f7a85"],
   },
   {
@@ -122,11 +133,43 @@ export const THEMES: Theme[] = [
     btnText: "#eef7f7",
     chip: "rgba(47,107,110,0.1)",
     danger: "#a35c52",
+    hint: "#e0983d",
     piecePalette: ["#2f6b6e", "#3f8a8f", "#4a7fa5", "#5c8a52", "#c9843b", "#a35c52"],
+  },
+  {
+    id: "sepia",
+    name: "Sepia",
+    outer: "#e6dccb",
+    panel: "#fdf8ef",
+    maze: "#f5ede0",
+    text: "#3b2f22",
+    sub: "#6e5c46",
+    sub2: "#b8a894",
+    accent: "#5a4632",
+    accent2: "#c1731f",
+    accent3: "#5a4632",
+    line: "#5a4632",
+    lineDone: "rgba(90,70,50,0.3)",
+    btnText: "#fdf8ef",
+    chip: "rgba(90,70,50,0.1)",
+    danger: "#9c3f26",
+    // Deep blue, the one hue nothing else on this board occupies: 6.4:1
+    // against the paper and a deltaE of 62 from the nearest brown.
+    hint: "#1652a8",
+    // Six tones of one brown rather than six colours. The board reads as a
+    // single drawing the way a printed puzzle does, and contrast against the
+    // paper runs 4.3:1 to 10.6:1 — far above what any of the colour themes
+    // managed. The tones still differ enough to show where one piece ends,
+    // which matters for anyone who cannot easily trace a line by eye.
+    piecePalette: ["#4a3826", "#6b533a", "#8a6a45", "#5c4a3f", "#7a5c3c", "#3f3228"],
   },
 ];
 
-export const DEFAULT_THEME: ThemeId = "ocean";
+export const DEFAULT_THEME: ThemeId = "sepia";
+/** The default before Sepia. A profile still carrying it inherited it rather
+ * than chose it, so it follows the default forward; anything else is a
+ * deliberate pick and is left alone. See loadProfile. */
+export const SUPERSEDED_DEFAULT_THEME: ThemeId = "ocean";
 
 export function getTheme(id: ThemeId): Theme {
   return THEMES.find((t) => t.id === id) ?? THEMES.find((t) => t.id === DEFAULT_THEME)!;
