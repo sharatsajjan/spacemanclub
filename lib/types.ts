@@ -28,6 +28,11 @@ export interface Puzzle {
   pieces: Piece[];
   tier: DifficultyTier;
   seed: number;
+  /** Which cells of the cols x rows grid are part of the board. A board is
+   * cut to a silhouette — a mushroom, a heart — rather than filling the
+   * rectangle, so cells outside it hold no piece, are never drawn, and count
+   * as open ground for a piece sliding past. Row-major, `mask[row][col]`. */
+  mask: boolean[][];
 }
 
 export interface LevelResult {

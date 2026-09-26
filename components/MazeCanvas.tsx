@@ -297,12 +297,22 @@ function ExitingPiece({
 }
 
 export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
-  const { cols, rows, pieces } = puzzle;
+  const { cols, rows, pieces, mask } = puzzle;
   const pieceColors = useMemo(() => assignPieceColors(pieces, cols, rows), [pieces, cols, rows]);
+  /** A dot belongs to the lattice only if it touches a cell of the shape, so
+   * the grid stops at the silhouette's edge instead of ruling the whole
+   * rectangle. Corners are bounded by the four cells that meet at them. */
+  const cornerInShape = (r: number, c: number) =>
+    [[r - 1, c - 1], [r - 1, c], [r, c - 1], [r, c]].some(
+      ([rr, cc]) => rr >= 0 && rr < rows && cc >= 0 && cc < cols && mask[rr][cc]
+    );
 
   return (
     <div
-      className="relative w-full select-none rounded-lg overflow-hidden bg-maze grid"
+      // No background of its own: the board's paper is drawn cell by cell
+      // below, so it takes the silhouette's outline rather than sitting in a
+      // rectangle behind it.
+      className="relative w-full select-none grid"
       data-testid="maze-canvas"
       data-pieces={JSON.stringify(pieces)}
       style={{
@@ -313,6 +323,10 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
     >
       {Array.from({ length: rows }).flatMap((_, r) =>
         Array.from({ length: cols }).map((__, c) => {
+          // Outside the silhouette there is nothing to tap. A plain div keeps
+          // the cell's slot in the grid so everything after it stays lined
+          // up, without offering a target or a label to a screen reader.
+          if (!mask[r][c]) return <div key={`${r}-${c}`} aria-hidden />;
           const isPresent = present[r][c];
           const hidden = pictureLayer?.[r]?.[c] ?? null;
           return (
@@ -344,14 +358,25 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
         viewBox={`0 0 ${cols} ${rows}`}
         preserveAspectRatio="none"
       >
+        {/* The board's paper, one rect per cell of the silhouette, under
+            everything. Neighbouring rects meet exactly, so the shape reads
+            as one continuous sheet with the maze drawn on it. */}
+        <g fill="var(--maze)">
+          {Array.from({ length: rows }).flatMap((_, r) =>
+            Array.from({ length: cols }).map((__, c) =>
+              mask[r][c] ? <rect key={`paper-${r}-${c}`} x={c} y={r} width={1} height={1} /> : null
+            )
+          )}
+        </g>
+
         {/* The lattice the maze is drawn on: a dot at every cell corner,
             under everything else. One more dot than cells along each axis,
             since corners bound them. */}
         <g fill="var(--sub2)" opacity={0.45}>
           {Array.from({ length: rows + 1 }).flatMap((_, r) =>
-            Array.from({ length: cols + 1 }).map((__, c) => (
-              <circle key={`dot-${r}-${c}`} cx={c} cy={r} r={DOT_RADIUS} />
-            ))
+            Array.from({ length: cols + 1 }).map((__, c) =>
+              cornerInShape(r, c) ? <circle key={`dot-${r}-${c}`} cx={c} cy={r} r={DOT_RADIUS} /> : null
+            )
           )}
         </g>
 
@@ -437,6 +462,7 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
           return (
             <g
               key={piece.id}
+              data-hint={isHinted || undefined}
               className={isHinted ? "animate-pulse" : undefined}
               style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
             >

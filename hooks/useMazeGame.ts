@@ -13,8 +13,20 @@ interface UseMazeGameOptions {
   onAllComplete: () => void;
 }
 
-function makePresentGrid(cols: number, rows: number): boolean[][] {
-  return Array.from({ length: rows }, () => new Array(cols).fill(true));
+/**
+ * Which cells start occupied — derived from the pieces, not filled in.
+ *
+ * A board is cut to a silhouette, so the space around the shape holds no
+ * piece and has to read as EMPTY: a piece slides out through it exactly as
+ * it would off the edge of the grid. Filling the grid with `true` would make
+ * that space count as a wall and strand every piece facing it.
+ */
+function makePresentGrid(puzzle: Puzzle): boolean[][] {
+  const grid = Array.from({ length: puzzle.rows }, () => new Array(puzzle.cols).fill(false));
+  for (const piece of puzzle.pieces) {
+    for (const cell of piece.cells) grid[cell.row][cell.col] = true;
+  }
+  return grid;
 }
 
 function buildPieceIdGrid(puzzle: Puzzle): number[][] {
@@ -29,7 +41,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
   const pieceIdGrid = useMemo(() => buildPieceIdGrid(puzzle), [puzzle]);
   const piecesById = useMemo(() => new Map(puzzle.pieces.map((p) => [p.id, p])), [puzzle]);
 
-  const [present, setPresent] = useState<boolean[][]>(() => makePresentGrid(puzzle.cols, puzzle.rows));
+  const [present, setPresent] = useState<boolean[][]>(() => makePresentGrid(puzzle));
   const [clearedCount, setClearedCount] = useState(0);
   const [flashPieceId, setFlashPieceId] = useState<number | null>(null);
   const [hintPieceId, setHintPieceId] = useState<number | null>(null);
@@ -52,7 +64,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
   const totalPieces = puzzle.pieces.length;
 
   useEffect(() => {
-    setPresent(makePresentGrid(puzzle.cols, puzzle.rows));
+    setPresent(makePresentGrid(puzzle));
     setClearedCount(0);
     setFlashPieceId(null);
     setHintPieceId(null);
@@ -64,7 +76,10 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     exitTimeoutsRef.current.forEach((t) => clearTimeout(t));
     exitTimeoutsRef.current.clear();
     setExitingPieces(new Map());
-  }, [puzzle.id, puzzle.cols, puzzle.rows]);
+    // The whole puzzle, since the starting grid is now derived from its
+    // pieces rather than just its dimensions. A new object arrives once per
+    // level, so this still runs exactly when the board changes.
+  }, [puzzle]);
 
   useEffect(() => {
     return () => {
@@ -110,16 +125,18 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
         }, exitDurationMs(piece, puzzle.cols, puzzle.rows) + EXIT_UNMOUNT_GRACE_MS)
       );
 
-      setClearedCount((n) => {
-        const nextCount = n + 1;
-        if (nextCount === totalPieces) {
-          finishedRef.current = true;
-          onAllComplete();
-        }
-        return nextCount;
-      });
+      // Counted here rather than inside the setState updater: React may run
+      // an updater while rendering, and finishing the level calls back into
+      // the page, which sets state of its own. Doing it in the tap handler
+      // keeps that out of anyone's render.
+      const nextCount = clearedCount + 1;
+      setClearedCount(nextCount);
+      if (nextCount === totalPieces) {
+        finishedRef.current = true;
+        onAllComplete();
+      }
     },
-    [present, piecesById, totalPieces, onAllComplete, puzzle.cols, puzzle.rows]
+    [present, clearedCount, piecesById, totalPieces, onAllComplete, puzzle.cols, puzzle.rows]
   );
 
   const tapCell = useCallback(

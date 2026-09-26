@@ -25,6 +25,10 @@ export interface Picture {
  * collected while it is off.
  */
 export const PICTURES_ENABLED = false;
+// Note for whenever this is switched back on: boards are now cut to
+// silhouettes, and only cells inside the shape are painted — so a picture
+// centred on the grid comes out clipped to the shape. Either confine the
+// reveal to rectangular levels or fit the picture to the mask.
 
 export const PICTURE_WIDTH = 9;
 export const PICTURE_HEIGHT = 9;

@@ -2,6 +2,7 @@ import { Coord, DifficultyTier, Direction, Piece, Puzzle } from "./types";
 import { mulberry32 } from "./rng";
 import { DIRECTIONS, delta, pieceCanExit, ringOf } from "./rules";
 import { gridForLevel, tierForLevel } from "./difficultyWave";
+import { layoutForLevel } from "./shapes";
 
 const MIN_PIECE_LEN = 2;
 const MAX_GENERATION_ATTEMPTS = 20;
@@ -673,8 +674,21 @@ function tryRescue(
  *     1% of the time and essentially never survives even a couple of
  *     retries.
  */
-function buildPieces(cols: number, rows: number, rand: () => number, complexity: Complexity): Piece[] | null {
-  const present: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(true));
+function buildPieces(
+  cols: number,
+  rows: number,
+  rand: () => number,
+  complexity: Complexity,
+  mask: boolean[][]
+): Piece[] | null {
+  // Cells outside the silhouette start empty, which is all it takes for the
+  // rest of the build to respect the shape: growth only ever takes cells
+  // that are still present, and pieceCanExit already treats an empty cell as
+  // open ground, so a piece can slide out through the space around the
+  // shape exactly as it would off the edge of the grid.
+  const present: boolean[][] = Array.from({ length: rows }, (_, r) =>
+    Array.from({ length: cols }, (_, c) => mask[r][c])
+  );
   const pieceIdGrid: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
   const pieces: Piece[] = [];
   let focus: Coord | null = null;
@@ -1052,8 +1066,15 @@ function absorbSingles(pieces: Piece[], cols: number, rows: number): Piece[] {
  * got longer (longer pieces strand more odd cells), which burned through
  * every retry and dropped good boards for a far worse fallback.
  */
-function boardScore(pieces: Piece[] | null, cols: number, rows: number): number | null {
+function boardScore(pieces: Piece[] | null, cols: number, rows: number, mask: boolean[][]): number | null {
   if (!pieces || !verifySolvable(pieces, cols, rows)) return null;
+  // Every cell of the silhouette has to belong to a piece; a gap inside the
+  // shape is a hole the player can see and can never clear.
+  let covered = 0;
+  for (const piece of pieces) covered += piece.cells.length;
+  let wanted = 0;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (mask[r][c]) wanted++;
+  if (covered !== wanted) return null;
   return pieces.filter((p) => p.cells.length < MIN_PIECE_LEN).length;
 }
 
@@ -1067,22 +1088,37 @@ function boardScore(pieces: Piece[] | null, cols: number, rows: number): number 
  * exists so that "no acceptable board" can never mean "hand the player a
  * board they cannot finish".
  */
-function fallbackBoard(cols: number, rows: number): Piece[] {
-  return Array.from({ length: rows }, (_, row) => {
-    const leftward = row % 2 === 0;
-    const cells: Coord[] = Array.from({ length: cols }, (_, i) => ({ row, col: leftward ? i : cols - 1 - i }));
-    return { id: row, cells, direction: leftward ? "left" : ("right" as Direction) };
-  });
+function fallbackBoard(cols: number, rows: number, mask: boolean[][]): Piece[] {
+  const pieces: Piece[] = [];
+  for (let row = 0; row < rows; row++) {
+    let run: Coord[] = [];
+    const flush = () => {
+      if (run.length === 0) return;
+      // Leftward, from the left end of the run: everything to its left in
+      // this row is outside the shape, so the lane is open from the start.
+      pieces.push({ id: pieces.length, cells: run, direction: "left" });
+      run = [];
+    };
+    for (let col = 0; col < cols; col++) {
+      if (mask[row][col]) run.push({ row, col });
+      else flush();
+    }
+    flush();
+  }
+  return pieces;
 }
 
 export function generatePuzzleForLevel(level: number, seed: number): Puzzle {
-  const { cols, rows } = gridForLevel(level);
+  // The shape comes first: it decides the grid's proportions, so that the
+  // silhouette lands on the grid undistorted rather than being stretched
+  // onto whatever rectangle the difficulty happened to ask for.
+  const { cols, rows, mask } = layoutForLevel(level);
   const complexity = COMPLEXITY_BY_TIER[tierForLevel(level)];
 
   let best: Piece[] | null = null;
   let bestScore = Infinity;
   const consider = (candidate: Piece[] | null): boolean => {
-    const score = boardScore(candidate, cols, rows);
+    const score = boardScore(candidate, cols, rows, mask);
     if (score === null) return false;
     if (score < bestScore) {
       best = candidate;
@@ -1092,7 +1128,7 @@ export function generatePuzzleForLevel(level: number, seed: number): Puzzle {
   };
 
   for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
-    const built = buildPieces(cols, rows, mulberry32(seed + attempt * 104729), complexity);
+    const built = buildPieces(cols, rows, mulberry32(seed + attempt * 104729), complexity, mask);
     if (consider(built && absorbSingles(built, cols, rows))) break;
   }
 
@@ -1103,7 +1139,7 @@ export function generatePuzzleForLevel(level: number, seed: number): Puzzle {
   if (best === null) {
     const relaxed: Complexity = { ...complexity, dependencyBias: 0, minLen: 2, maxLen: Math.min(complexity.maxLen, 5) };
     for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
-      const built = buildPieces(cols, rows, mulberry32(seed + 7919 + attempt * 104729), relaxed);
+      const built = buildPieces(cols, rows, mulberry32(seed + 7919 + attempt * 104729), relaxed, mask);
       if (consider(built && absorbSingles(built, cols, rows))) break;
     }
   }
@@ -1113,9 +1149,10 @@ export function generatePuzzleForLevel(level: number, seed: number): Puzzle {
     level,
     cols,
     rows,
-    pieces: best ?? fallbackBoard(cols, rows),
+    pieces: best ?? fallbackBoard(cols, rows, mask),
     tier: tierForLevel(level),
     seed,
+    mask,
   };
 }
 

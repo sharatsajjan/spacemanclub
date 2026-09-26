@@ -80,17 +80,35 @@ function difficultyScaleForLevel(level: number): number {
   return RAMP_START_SCALE + rampFrac * (naturalScale - RAMP_START_SCALE);
 }
 
-export function gridForLevel(level: number): { cols: number; rows: number } {
+/** The cols:rows ratio a plain rectangular board aims at: roughly twice as
+ * tall as it is wide, which suits a phone held upright and uses the space a
+ * portrait screen actually has. */
+const DEFAULT_ASPECT = 0.52;
+
+/**
+ * The grid a level is played on.
+ *
+ * `aspect` is cols divided by rows. A board cut to a silhouette has to pass
+ * its shape's own ratio in, or the shape is stretched onto the grid and
+ * stops being recognisable — a heart on the default 0.52 grid comes out as a
+ * tall smear. The cell count is what difficulty scales; the ratio only
+ * decides how those cells are arranged.
+ */
+export function gridForLevel(
+  level: number,
+  aspect: number = DEFAULT_ASPECT,
+  cellScale: number = 1
+): { cols: number; rows: number } {
   const scale = difficultyScaleForLevel(level);
-  const targetCells = Math.max(6, Math.round(scale * 9));
+  // `cellScale` is how much bigger the grid has to be than the puzzle it
+  // holds. A board cut to a silhouette throws away the cells outside the
+  // shape, so a grid sized for the level would leave a tree level with half
+  // the pieces of a rectangular one at the same difficulty; the shape asks
+  // for the grid that gets its piece count back.
+  const targetCells = Math.max(6, Math.round(scale * 9 * cellScale));
   const minCols = level < RAMP_LEVELS ? 2 : 5;
   const minRows = level < RAMP_LEVELS ? 2 : 6;
-  // 0.52 is the cols:rows ratio the board is aimed at: roughly twice as tall
-  // as it is wide, which suits a phone held upright. Once a board outgrows
-  // the screen it scrolls vertically, and a tall board scrolls in one
-  // direction rather than two — a squarer board of the same cell count would
-  // need panning sideways as well.
-  const cols = Math.max(minCols, Math.min(MAX_COLS, Math.round(Math.sqrt(targetCells * 0.52))));
+  const cols = Math.max(minCols, Math.min(MAX_COLS, Math.round(Math.sqrt(targetCells * aspect))));
   const rows = Math.max(minRows, Math.min(MAX_ROWS, Math.round(targetCells / cols)));
   return { cols, rows };
 }
