@@ -1,0 +1,227 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Direction, Puzzle } from "@/lib/types";
+import { pieceCanExit } from "@/lib/rules";
+import { maxHintsForLevel, maxUndosForLevel } from "@/lib/difficultyWave";
+import { EXIT_UNMOUNT_GRACE_MS, exitDurationMs } from "@/lib/exitMotion";
+import { hapticHint, hapticMistake, hapticSuccess } from "@/lib/haptics";
+
+interface UseMazeGameOptions {
+  puzzle: Puzzle;
+  onMistake: () => void;
+  onAllComplete: () => void;
+}
+
+/**
+ * Which cells start occupied — derived from the pieces, not filled in.
+ *
+ * A board is cut to a silhouette, so the space around the shape holds no
+ * piece and has to read as EMPTY: a piece slides out through it exactly as
+ * it would off the edge of the grid. Filling the grid with `true` would make
+ * that space count as a wall and strand every piece facing it.
+ */
+function makePresentGrid(puzzle: Puzzle): boolean[][] {
+  const grid = Array.from({ length: puzzle.rows }, () => new Array(puzzle.cols).fill(false));
+  for (const piece of puzzle.pieces) {
+    for (const cell of piece.cells) grid[cell.row][cell.col] = true;
+  }
+  return grid;
+}
+
+function buildPieceIdGrid(puzzle: Puzzle): number[][] {
+  const grid = Array.from({ length: puzzle.rows }, () => new Array(puzzle.cols).fill(-1));
+  for (const piece of puzzle.pieces) {
+    for (const cell of piece.cells) grid[cell.row][cell.col] = piece.id;
+  }
+  return grid;
+}
+
+export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOptions) {
+  const pieceIdGrid = useMemo(() => buildPieceIdGrid(puzzle), [puzzle]);
+  const piecesById = useMemo(() => new Map(puzzle.pieces.map((p) => [p.id, p])), [puzzle]);
+
+  const [present, setPresent] = useState<boolean[][]>(() => makePresentGrid(puzzle));
+  const [clearedCount, setClearedCount] = useState(0);
+  const [flashPieceId, setFlashPieceId] = useState<number | null>(null);
+  const [hintPieceId, setHintPieceId] = useState<number | null>(null);
+  const [mistakes, setMistakes] = useState(0);
+  const [hintsUsed, setHintsUsed] = useState(0);
+  // Pieces mid slide-out animation: kept rendered (in their exit direction)
+  // for a short window after they're already removed from `present`, so
+  // gameplay logic (what's blocking, what's tappable) updates instantly
+  // while the visual only catches up a moment later.
+  const [exitingPieces, setExitingPieces] = useState<Map<number, Direction>>(() => new Map());
+  /** Ids of cleared pieces, most recent last — the undo stack. */
+  const [clearHistory, setClearHistory] = useState<number[]>([]);
+  const [undosUsed, setUndosUsed] = useState(0);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exitTimeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const finishedRef = useRef(false);
+
+  const maxHints = useMemo(() => maxHintsForLevel(puzzle.level), [puzzle.level]);
+  const maxUndos = useMemo(() => maxUndosForLevel(puzzle.level), [puzzle.level]);
+  const totalPieces = puzzle.pieces.length;
+
+  useEffect(() => {
+    setPresent(makePresentGrid(puzzle));
+    setClearedCount(0);
+    setFlashPieceId(null);
+    setHintPieceId(null);
+    setMistakes(0);
+    setHintsUsed(0);
+    setClearHistory([]);
+    setUndosUsed(0);
+    finishedRef.current = false;
+    exitTimeoutsRef.current.forEach((t) => clearTimeout(t));
+    exitTimeoutsRef.current.clear();
+    setExitingPieces(new Map());
+    // The whole puzzle, since the starting grid is now derived from its
+    // pieces rather than just its dimensions. A new object arrives once per
+    // level, so this still runs exactly when the board changes.
+  }, [puzzle]);
+
+  useEffect(() => {
+    return () => {
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      exitTimeoutsRef.current.forEach((t) => clearTimeout(t));
+    };
+  }, []);
+
+  const triggerFlash = useCallback((pieceId: number) => {
+    setFlashPieceId(pieceId);
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    flashTimeoutRef.current = setTimeout(() => setFlashPieceId(null), 350);
+  }, []);
+
+  const clearPiece = useCallback(
+    (id: number) => {
+      const piece = piecesById.get(id);
+      if (!piece) return;
+      const next = present.map((r) => r.slice());
+      for (const cell of piece.cells) next[cell.row][cell.col] = false;
+      setPresent(next);
+      setHintPieceId((h) => (h === id ? null : h));
+      setClearHistory((h) => [...h, id]);
+      hapticSuccess();
+
+      setExitingPieces((prev) => {
+        const nextMap = new Map(prev);
+        nextMap.set(id, piece.direction);
+        return nextMap;
+      });
+      const existingTimeout = exitTimeoutsRef.current.get(id);
+      if (existingTimeout) clearTimeout(existingTimeout);
+      exitTimeoutsRef.current.set(
+        id,
+        setTimeout(() => {
+          exitTimeoutsRef.current.delete(id);
+          setExitingPieces((prev) => {
+            if (!prev.has(id)) return prev;
+            const nextMap = new Map(prev);
+            nextMap.delete(id);
+            return nextMap;
+          });
+        }, exitDurationMs(piece, puzzle.cols, puzzle.rows) + EXIT_UNMOUNT_GRACE_MS)
+      );
+
+      // Counted here rather than inside the setState updater: React may run
+      // an updater while rendering, and finishing the level calls back into
+      // the page, which sets state of its own. Doing it in the tap handler
+      // keeps that out of anyone's render.
+      const nextCount = clearedCount + 1;
+      setClearedCount(nextCount);
+      if (nextCount === totalPieces) {
+        finishedRef.current = true;
+        onAllComplete();
+      }
+    },
+    [present, clearedCount, piecesById, totalPieces, onAllComplete, puzzle.cols, puzzle.rows]
+  );
+
+  const tapCell = useCallback(
+    (row: number, col: number) => {
+      if (finishedRef.current) return;
+      const id = pieceIdGrid[row][col];
+      if (id === -1 || !present[row][col]) return; // already cleared, no-op
+
+      const piece = piecesById.get(id)!;
+      const canExit = pieceCanExit(present, piece.cells, puzzle.cols, puzzle.rows, piece.direction);
+
+      if (canExit) {
+        clearPiece(id);
+      } else {
+        setMistakes((m) => m + 1);
+        triggerFlash(id);
+        hapticMistake();
+        onMistake();
+      }
+    },
+    [present, pieceIdGrid, piecesById, puzzle.cols, puzzle.rows, clearPiece, onMistake, triggerFlash]
+  );
+
+  const requestHint = useCallback(() => {
+    if (finishedRef.current || hintsUsed >= maxHints) return;
+    const clearable = puzzle.pieces.filter(
+      (piece) =>
+        present[piece.cells[0].row][piece.cells[0].col] &&
+        pieceCanExit(present, piece.cells, puzzle.cols, puzzle.rows, piece.direction)
+    );
+    if (clearable.length === 0) return;
+    const pick = clearable[Math.floor(Math.random() * clearable.length)];
+    setHintsUsed((h) => h + 1);
+    setHintPieceId(pick.id);
+    hapticHint();
+  }, [present, puzzle.pieces, puzzle.cols, puzzle.rows, hintsUsed, maxHints]);
+
+  /** Puts the most recently cleared piece back. Safe at any point: a piece
+   * that was legal to clear is always legal to restore, since putting cells
+   * back can only ever block other pieces, never strand one — and anything
+   * it now blocks was cleared after it, so it isn't on the board either. */
+  const undoLastClear = useCallback(() => {
+    if (finishedRef.current || undosUsed >= maxUndos || clearHistory.length === 0) return;
+    const id = clearHistory[clearHistory.length - 1];
+    const piece = piecesById.get(id);
+    if (!piece) return;
+
+    const next = present.map((r) => r.slice());
+    for (const cell of piece.cells) next[cell.row][cell.col] = true;
+    setPresent(next);
+    setClearHistory((h) => h.slice(0, -1));
+    setUndosUsed((u) => u + 1);
+    setClearedCount((n) => Math.max(0, n - 1));
+
+    // Cancel any in-flight slide-out so the piece doesn't animate away while
+    // it's being put back.
+    const pendingExit = exitTimeoutsRef.current.get(id);
+    if (pendingExit) {
+      clearTimeout(pendingExit);
+      exitTimeoutsRef.current.delete(id);
+    }
+    setExitingPieces((prev) => {
+      if (!prev.has(id)) return prev;
+      const nextMap = new Map(prev);
+      nextMap.delete(id);
+      return nextMap;
+    });
+    hapticHint();
+  }, [present, piecesById, clearHistory, undosUsed, maxUndos]);
+
+  return {
+    present,
+    exitingPieces,
+    flashPieceId,
+    hintPieceId,
+    mistakes,
+    hintsUsed,
+    maxHints,
+    undosUsed,
+    maxUndos,
+    canUndo: clearHistory.length > 0 && undosUsed < maxUndos,
+    clearedCount,
+    totalPieces,
+    tapCell,
+    requestHint,
+    undoLastClear,
+  };
+}

@@ -1,0 +1,176 @@
+import { ThemeId } from "./types";
+
+export interface Theme {
+  id: ThemeId;
+  name: string;
+  outer: string;
+  panel: string;
+  maze: string;
+  text: string;
+  sub: string;
+  sub2: string;
+  accent: string;
+  accent2: string;
+  accent3: string;
+  line: string;
+  lineDone: string;
+  btnText: string;
+  chip: string;
+  danger: string;
+  /**
+   * Colour a hinted piece is drawn in. Per theme rather than fixed, because
+   * it has to stand out against THAT theme's board and against its own piece
+   * colours. The fixed amber this replaced managed 2.07:1 on a cream board —
+   * the one highlight a struggling player leans on, almost invisible.
+   */
+  hint: string;
+  /**
+   * Colors the pieces are drawn in. Adjacent pieces are always given
+   * different entries (see assignPieceColors), so a board of 80-odd pieces
+   * reads as separate shapes instead of one flat mass — with everything in
+   * a single color you can't tell where one piece stops and the next
+   * starts without tracing it. Each palette stays inside its theme's own
+   * range so the board still looks like one picture.
+   */
+  piecePalette: string[];
+}
+
+export const THEMES: Theme[] = [
+  {
+    id: "linen",
+    name: "Linen",
+    outer: "#d8cdb8",
+    panel: "#f0e9dc",
+    maze: "#e8dfcd",
+    text: "#5c4a36",
+    sub: "#8a7358",
+    sub2: "#a3937a",
+    accent: "#8a5a2f",
+    accent2: "#a35c52",
+    accent3: "#c9843b",
+    line: "#8a5a2f",
+    lineDone: "rgba(138,90,47,0.3)",
+    btnText: "#fdf6ea",
+    chip: "rgba(90,60,30,0.08)",
+    danger: "#c0483f",
+    hint: "#e0983d",
+    piecePalette: ["#8a5a2f", "#b0743a", "#a35c52", "#7d7a45", "#6f7f66", "#9c6a80"],
+  },
+  {
+    id: "slate",
+    name: "Slate Night",
+    outer: "#171826",
+    panel: "#20223a",
+    maze: "#262a46",
+    text: "#e9e7f5",
+    sub: "#9a95bf",
+    sub2: "#726d99",
+    accent: "#c9a86a",
+    accent2: "#e08c93",
+    accent3: "#c9a86a",
+    line: "#c9a86a",
+    lineDone: "rgba(201,168,106,0.32)",
+    btnText: "#1b1a2e",
+    chip: "rgba(201,168,106,0.14)",
+    danger: "#e08c93",
+    hint: "#e0983d",
+    piecePalette: ["#c9a86a", "#e0a06a", "#e08c93", "#8fb6e0", "#89c9a8", "#b9a0d9"],
+  },
+  {
+    id: "sage",
+    name: "Sage",
+    outer: "#d7dcc9",
+    panel: "#eef1e3",
+    maze: "#e5e9d6",
+    text: "#3f4a34",
+    sub: "#748261",
+    sub2: "#93a17c",
+    accent: "#4f6b3f",
+    accent2: "#8a6b3f",
+    accent3: "#6b8a4f",
+    line: "#4f6b3f",
+    lineDone: "rgba(79,107,63,0.3)",
+    btnText: "#f4f7ec",
+    chip: "rgba(60,90,45,0.1)",
+    danger: "#a35c52",
+    hint: "#e0983d",
+    piecePalette: ["#4f6b3f", "#6f9150", "#8a6b3f", "#3f7a6b", "#a35c52", "#5f7a8a"],
+  },
+  {
+    id: "dusk",
+    name: "Dusk",
+    outer: "#d9cdd2",
+    panel: "#f2e7eb",
+    maze: "#ecdee3",
+    text: "#4a3640",
+    sub: "#8a6d78",
+    sub2: "#a68d97",
+    accent: "#7a4a5c",
+    accent2: "#a35c52",
+    accent3: "#8a6b3f",
+    line: "#7a4a5c",
+    lineDone: "rgba(122,74,92,0.3)",
+    btnText: "#fbf1f4",
+    chip: "rgba(122,74,92,0.1)",
+    danger: "#a35c52",
+    hint: "#e0983d",
+    piecePalette: ["#7a4a5c", "#a3527a", "#a35c52", "#8a6b3f", "#6b5c8a", "#4f7a85"],
+  },
+  {
+    id: "ocean",
+    name: "Ocean",
+    outer: "#cdd6d8",
+    panel: "#e6eded",
+    maze: "#dbe6e6",
+    text: "#2f4a4c",
+    sub: "#5f8285",
+    sub2: "#7fa0a2",
+    accent: "#2f6b6e",
+    accent2: "#5c8a52",
+    accent3: "#3f8a8f",
+    line: "#2f6b6e",
+    lineDone: "rgba(47,107,110,0.3)",
+    btnText: "#eef7f7",
+    chip: "rgba(47,107,110,0.1)",
+    danger: "#a35c52",
+    hint: "#e0983d",
+    piecePalette: ["#2f6b6e", "#3f8a8f", "#4a7fa5", "#5c8a52", "#c9843b", "#a35c52"],
+  },
+  {
+    id: "sepia",
+    name: "Sepia",
+    outer: "#e6dccb",
+    panel: "#fdf8ef",
+    maze: "#f5ede0",
+    text: "#3b2f22",
+    sub: "#6e5c46",
+    sub2: "#b8a894",
+    accent: "#5a4632",
+    accent2: "#c1731f",
+    accent3: "#5a4632",
+    line: "#5a4632",
+    lineDone: "rgba(90,70,50,0.3)",
+    btnText: "#fdf8ef",
+    chip: "rgba(90,70,50,0.1)",
+    danger: "#9c3f26",
+    // Deep blue, the one hue nothing else on this board occupies: 6.4:1
+    // against the paper and a deltaE of 62 from the nearest brown.
+    hint: "#1652a8",
+    // Six tones of one brown rather than six colours. The board reads as a
+    // single drawing the way a printed puzzle does, and contrast against the
+    // paper runs 4.3:1 to 10.6:1 — far above what any of the colour themes
+    // managed. The tones still differ enough to show where one piece ends,
+    // which matters for anyone who cannot easily trace a line by eye.
+    piecePalette: ["#4a3826", "#6b533a", "#8a6a45", "#5c4a3f", "#7a5c3c", "#3f3228"],
+  },
+];
+
+export const DEFAULT_THEME: ThemeId = "sepia";
+/** The default before Sepia. A profile still carrying it inherited it rather
+ * than chose it, so it follows the default forward; anything else is a
+ * deliberate pick and is left alone. See loadProfile. */
+export const SUPERSEDED_DEFAULT_THEME: ThemeId = "ocean";
+
+export function getTheme(id: ThemeId): Theme {
+  return THEMES.find((t) => t.id === id) ?? THEMES.find((t) => t.id === DEFAULT_THEME)!;
+}

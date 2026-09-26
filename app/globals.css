@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  /* Ocean theme defaults (matches lib/themes.ts DEFAULT_THEME) so there's no flash before hydration. */
+  --outer: #cdd6d8;
+  --panel: #e6eded;
+  --maze: #dbe6e6;
+  --text: #2f4a4c;
+  --sub: #5f8285;
+  --sub2: #7fa0a2;
+  --accent: #2f6b6e;
+  --accent2: #5c8a52;
+  --accent3: #3f8a8f;
+  --line: #2f6b6e;
+  --line-done: rgba(47, 107, 110, 0.3);
+  --btn-text: #eef7f7;
+  --chip: rgba(47, 107, 110, 0.1);
+  --danger: #a35c52;
+}
+
+html,
+body {
+  background: var(--outer);
+  color: var(--text);
+}
+
+body {
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
