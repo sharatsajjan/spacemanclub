@@ -105,6 +105,11 @@ const STRANDED_SWEEP_LIMIT = 3;
 /** A piece has to be at least this long to be worth making a bottleneck of:
  * a short one lies across too few lanes for anything to hang off it. */
 const KEYSTONE_MIN_LEN = 5;
+/** How far down its lane a piece's blocker has to sit before the lane counts
+ * as worth tracing. Below this the blocker is close enough to the arrowhead
+ * to be taken in at a glance, and the piece is no part of the puzzle. */
+const MIN_TRACE_DISTANCE = 3;
+
 /** How many pieces are built trying to hang off a keystone before another is
  * chosen. This is roughly how many pieces one bottleneck releases. */
 const KEYSTONE_FAN = 7;
@@ -245,12 +250,21 @@ function pickCandidate(
     );
     if (behindKeystone) return behindKeystone;
   }
-  // Otherwise the candidate whose blocker sits FURTHEST down its lane,
-  // breaking ties toward the newest blocker. Ranking by newest alone left
-  // boards where 80% of pieces were blocked by the cell directly in front of
-  // the arrow, so nothing ever had to be traced.
+  // Otherwise the candidate waiting on the NEWEST piece — the one cleared
+  // immediately before it — out of those whose blocker is far enough down
+  // the lane to be worth tracing. Waiting on the newest piece is what makes
+  // the board a chain rather than a heap: a piece that waits on an early one
+  // comes free at the same moment as every other piece waiting on it, and a
+  // board where half the pieces are legal at once plays itself.
+  //
+  // The distance floor is what stops that collapsing into the failure the
+  // furthest-first rule was written for: ranking by newest alone put 80% of
+  // blockers in the cell directly in front of the arrow, so nothing ever had
+  // to be traced. Where nothing clears the floor, fall back to the furthest.
   const scored = shuffled.map((candidate) => ({ candidate, ...candidateBlockerInfo(candidate, pieceIdGrid, cols, rows) }));
-  return scored.reduce((a, b) => (b.dist > a.dist || (b.dist === a.dist && b.id > a.id) ? b : a)).candidate;
+  const traceable = scored.filter((s) => s.dist >= MIN_TRACE_DISTANCE);
+  const ranked = traceable.length > 0 ? traceable : scored;
+  return ranked.reduce((a, b) => (b.id > a.id || (b.id === a.id && b.dist > a.dist) ? b : a)).candidate;
 }
 
 function pickExitDirection(
@@ -271,7 +285,10 @@ function pickExitDirection(
     const behindKeystone = scored.find((s) => s.id === keystoneId);
     if (behindKeystone) return behindKeystone.dir;
   }
-  return scored.reduce((a, b) => (b.dist > a.dist || (b.dist === a.dist && b.id > a.id) ? b : a)).dir;
+  // Newest blocker first among the lanes worth tracing, as in pickCandidate.
+  const traceable = scored.filter((s) => s.dist >= MIN_TRACE_DISTANCE);
+  const ranked = traceable.length > 0 ? traceable : scored;
+  return ranked.reduce((a, b) => (b.id > a.id || (b.id === a.id && b.dist > a.dist) ? b : a)).dir;
 }
 
 function directionFromDelta(d: Coord): Direction | null {
@@ -975,6 +992,73 @@ function verifySolvable(pieces: Piece[], cols: number, rows: number): boolean {
   return remaining.size === 0;
 }
 
+/**
+ * What a board costs a player to read, measured by playing it out.
+ *
+ * Two numbers, both fractions:
+ *
+ *  - `legalShare`: of the pieces still on the board, how many could be
+ *    tapped right now, averaged over the solve. The rules make no move wrong
+ *    — clearing a piece only ever frees cells — so all of the difficulty is
+ *    in finding a legal piece, and the more of the board is legal the less
+ *    there is to find.
+ *  - `glanceShare`: the fraction of moves at which some legal piece has its
+ *    arrowhead within a couple of cells of the edge. This is the one that
+ *    decides whether a board is actually played. A piece already at the rim
+ *    is visibly free — no lane to trace, no board to read — so while one is
+ *    on offer nothing else about the board matters.
+ *
+ * Returns null if the board cannot be finished, which also serves as the
+ * solvability check.
+ */
+interface SolveProfile {
+  legalShare: number;
+  glanceShare: number;
+}
+
+/** Cells of lane a player takes in without tracing it. */
+const GLANCE_DISTANCE = 2;
+
+function distanceToEdge(head: Coord, dir: Direction, cols: number, rows: number): number {
+  switch (dir) {
+    case "up":
+      return head.row;
+    case "down":
+      return rows - 1 - head.row;
+    case "left":
+      return head.col;
+    case "right":
+      return cols - 1 - head.col;
+  }
+}
+
+function solveProfile(pieces: Piece[], cols: number, rows: number): SolveProfile | null {
+  const present: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
+  for (const piece of pieces) {
+    for (const cell of piece.cells) present[cell.row][cell.col] = true;
+  }
+
+  const remaining = new Set(pieces.map((p) => p.id));
+  let legalTotal = 0;
+  let glanceSteps = 0;
+  let steps = 0;
+  while (remaining.size > 0) {
+    const legal: Piece[] = [];
+    for (const id of remaining) {
+      const piece = pieces[id];
+      if (pieceCanExit(present, piece.cells, cols, rows, piece.direction)) legal.push(piece);
+    }
+    if (legal.length === 0) return null; // deadlocked: not a board at all
+    legalTotal += legal.length / remaining.size;
+    if (legal.some((p) => distanceToEdge(p.cells[0], p.direction, cols, rows) <= GLANCE_DISTANCE)) glanceSteps++;
+    steps++;
+    const taken = legal[0];
+    for (const cell of taken.cells) present[cell.row][cell.col] = false;
+    remaining.delete(taken.id);
+  }
+  return steps === 0 ? null : { legalShare: legalTotal / steps, glanceShare: glanceSteps / steps };
+}
+
 /** Re-lays a piece list so every piece's id matches its index again, which
  * the solver and the renderer both rely on. */
 function renumber(pieces: Piece[]): Piece[] {
@@ -1066,8 +1150,21 @@ function absorbSingles(pieces: Piece[], cols: number, rows: number): Piece[] {
  * got longer (longer pieces strand more odd cells), which burned through
  * every retry and dropped good boards for a far worse fallback.
  */
+/**
+ * How bad a board is, lower being better, or null if it is not a board at
+ * all. Two things, in order:
+ *
+ * 1. One-cell pieces, which are free moves rather than puzzle.
+ * 2. How often the board offers a move that needs no reading, and how much
+ *    of it is legal at once (see `solveProfile`). Boards vary widely on both
+ *    at identical settings, so generating several and keeping the tightest
+ *    buys more difficulty than any amount of tuning.
+ *
+ * Singles are weighted far above either, so one can never be traded for the
+ * other.
+ */
 function boardScore(pieces: Piece[] | null, cols: number, rows: number, mask: boolean[][]): number | null {
-  if (!pieces || !verifySolvable(pieces, cols, rows)) return null;
+  if (!pieces) return null;
   // Every cell of the silhouette has to belong to a piece; a gap inside the
   // shape is a hole the player can see and can never clear.
   let covered = 0;
@@ -1075,8 +1172,22 @@ function boardScore(pieces: Piece[] | null, cols: number, rows: number, mask: bo
   let wanted = 0;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (mask[r][c]) wanted++;
   if (covered !== wanted) return null;
-  return pieces.filter((p) => p.cells.length < MIN_PIECE_LEN).length;
+  const profile = solveProfile(pieces, cols, rows);
+  if (profile === null) return null; // also proves it is solvable
+  const singles = pieces.filter((p) => p.cells.length < MIN_PIECE_LEN).length;
+  return singles * SINGLE_PIECE_PENALTY + profile.glanceShare + profile.legalShare * LEGAL_SHARE_WEIGHT;
 }
+
+/** A one-cell piece costs more than any difference in search ever can. */
+const SINGLE_PIECE_PENALTY = 100;
+
+/** The legal share matters, but less than whether the move on offer has to
+ * be read at all. */
+const LEGAL_SHARE_WEIGHT = 0.5;
+
+/** A board this tight is taken as soon as it turns up, rather than spending
+ * the rest of the attempts looking for a better one. */
+const GOOD_ENOUGH_SCORE = 0.42;
 
 /**
  * A board that is correct by inspection: one piece per row, spanning the
@@ -1124,7 +1235,7 @@ export function generatePuzzleForLevel(level: number, seed: number): Puzzle {
       best = candidate;
       bestScore = score;
     }
-    return bestScore === 0; // nothing left to improve
+    return bestScore <= GOOD_ENOUGH_SCORE; // no singles, little given away
   };
 
   for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
