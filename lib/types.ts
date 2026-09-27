@@ -8,11 +8,20 @@ export interface Coord {
 export type DifficultyTier = "Easy" | "Medium" | "Hard" | "Hardest";
 
 /**
- * A piece occupies a connected, bent path of one or more cells (`cells`,
- * ordered tail-to-head) and slides rigidly in `direction` when tapped. It
- * clears only if every cell in its path from each of its own cells out to
- * the board edge, in `direction`, is free of every OTHER still-present
- * piece — its own cells never block each other since they move together.
+ * A piece: a connected, bent path of one or more cells, with `cells[0]` the
+ * HEAD — where the arrowhead is drawn and the end the piece leaves by.
+ *
+ * A piece does not slide rigidly. It threads out head first, each segment
+ * following into the cell the one ahead has just vacated, so the only ground
+ * it covers that it does not already occupy is the straight lane from its
+ * head to the edge in `direction`. That lane has to be clear of other
+ * pieces — and of the piece's own body, since the body follows the head
+ * rather than moving aside. See `pieceCanExit` in lib/rules.ts, which is the
+ * single definition of legality, used by the game and the generator alike.
+ *
+ * `id` is always the piece's own index in `Puzzle.pieces`. The solver and
+ * the renderer both index by it, so anything that reorders pieces has to
+ * renumber them.
  */
 export interface Piece {
   id: number;
