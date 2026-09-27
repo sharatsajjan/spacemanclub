@@ -244,8 +244,11 @@ can quiet the game.
 
 ## Look and feel
 
-Six themes as CSS variables (`themes.ts`, applied by `ThemeStyle`). The
-default is **Sepia**, chosen for older players: light, warm, high contrast.
+Six themes as CSS variables (`themes.ts`, applied by `ThemeStyle`), chosen
+from the palette button on either the home screen or the board itself — on
+the board it opens over the level, so a player picks a theme while looking
+at the maze it applies to, and the level is still waiting when they close
+it. The default is **Sepia**, chosen for older players: light, warm, high contrast.
 `storage.ts` moves existing profiles off the superseded default exactly once,
 guarded by a flag read from the raw stored object — without that guard it
 re-runs on every load and a player can never keep the old theme.

@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayerProfile } from "@/hooks/usePlayerProfile";
 import { generatePuzzleForLevel } from "@/lib/mazeGenerator";
-import { applyLevelResult } from "@/lib/storage";
+import { applyLevelResult, setTheme } from "@/lib/storage";
 import { LevelResult, Puzzle } from "@/lib/types";
 import { ThemeStyle } from "@/components/ThemeStyle";
 import { MazeGameView } from "@/components/MazeGameView";
 import { PaperPop } from "@/components/PaperPop";
+import { ThemePicker } from "@/components/ThemePicker";
 import { PictureTile } from "@/components/PictureTile";
 import { getPicture } from "@/lib/pictures";
 import { PaletteIcon, SettingsIcon, SoundOffIcon, SoundOnIcon, TrophyIcon, StarIcon, WaterDropIcon } from "@/components/icons";
@@ -42,6 +43,7 @@ export default function PlayPage() {
   const [result, setResult] = useState<LevelResult | null>(null);
   const [isNewPicture, setIsNewPicture] = useState(false);
   const [isBestTime, setIsBestTime] = useState(false);
+  const [showThemes, setShowThemes] = useState(false);
 
   useEffect(() => {
     if (!hydrated || puzzle) return;
@@ -149,10 +151,45 @@ export default function PlayPage() {
               >
                 {soundOn ? <SoundOnIcon className="w-4 h-4" /> : <SoundOffIcon className="w-4 h-4" />}
               </button>
-              <PaletteIcon className="w-4 h-4" />
+              <button
+                type="button"
+                onClick={() => setShowThemes((s) => !s)}
+                aria-label="Change theme"
+                aria-expanded={showThemes}
+                className="-m-2 p-2"
+              >
+                <PaletteIcon className="w-4 h-4" />
+              </button>
               <SettingsIcon className="w-4 h-4" />
             </div>
           </div>
+
+          {/* Over the board, not instead of it: a theme is chosen by looking
+              at the maze, and the level underneath carries on waiting. */}
+          {showThemes && (
+            <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center">
+              <button
+                type="button"
+                aria-label="Close theme picker"
+                onClick={() => setShowThemes(false)}
+                className="absolute inset-0 bg-black/25"
+              />
+              <div data-testid="theme-sheet" className="relative w-full max-w-sm m-3 rounded-3xl bg-panel p-5 shadow-xl">
+                <h2 className="font-extrabold text-sm text-text text-center mb-3">Theme</h2>
+                <ThemePicker
+                  current={profile.theme}
+                  onSelect={(id) => setProfile((p) => setTheme(p, id))}
+                />
+                <button
+                  onClick={() => setShowThemes(false)}
+                  className="w-full rounded-2xl py-3 font-bold text-sm mt-4"
+                  style={{ background: "var(--accent)", color: "var(--btn-text)" }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
 
           {phase === "playing" && (
             <MazeGameView

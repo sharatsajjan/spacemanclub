@@ -138,6 +138,40 @@ function step(name, ok, detail = "") {
   });
   step("booster bar stays pinned in the lower half", barVisible);
 
+  // 4b. the theme picker, reachable from the board itself
+  const pageColour = () => page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--outer").trim());
+  const before = await pageColour();
+  await page.click('button[aria-label="Change theme"]');
+  await page.waitForTimeout(200);
+  const offered = await page.locator('[data-testid="theme-sheet"] button[aria-label$="theme"]').count();
+  step("the palette opens a theme picker", offered >= 5, `${offered} themes offered`);
+
+  // Whichever theme is not the current one, so the change is visible.
+  const otherTheme = await page.evaluate(() => {
+    const current = getComputedStyle(document.documentElement).getPropertyValue("--outer").trim();
+    const buttons = [...document.querySelectorAll('[data-testid="theme-sheet"] button[aria-label$="theme"]')];
+    const pick = buttons.find((b) => b.querySelector("span")?.style.background !== current) ?? buttons[1];
+    pick.click();
+    return pick.getAttribute("aria-label");
+  });
+  await page.waitForTimeout(250);
+  const after = await pageColour();
+  step("choosing a theme repaints the board", before !== after, `${otherTheme}: ${before} -> ${after}`);
+
+  await page.click("text=Done");
+  await page.waitForTimeout(200);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("arrowflow.profile.v2")).theme);
+  const stillPlaying = await page.locator('[data-testid="maze-canvas"]').count();
+  step("the choice is kept and the level is still there", !!stored && stillPlaying === 1, `theme=${stored}`);
+
+  // Back to the theme the rest of the run expects.
+  await page.click('button[aria-label="Change theme"]');
+  await page.waitForTimeout(150);
+  await page.click('[data-testid="theme-sheet"] button[aria-label="Sepia theme"]');
+  await page.click("text=Done");
+  await page.waitForTimeout(200);
+
   // 5. solve the level, only tapping pieces that can legally exit
   let taps = 0;
   for (let round = 0; round < pieces.length + 10; round++) {
