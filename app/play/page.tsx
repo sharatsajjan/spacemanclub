@@ -8,6 +8,7 @@ import { applyLevelResult, grantLifeFromAd, loseLife } from "@/lib/storage";
 import { LevelResult, Puzzle } from "@/lib/types";
 import { ThemeStyle } from "@/components/ThemeStyle";
 import { MazeGameView } from "@/components/MazeGameView";
+import { PaperPop } from "@/components/PaperPop";
 import { PictureTile } from "@/components/PictureTile";
 import { getPicture } from "@/lib/pictures";
 import { PaletteIcon, SettingsIcon, TrophyIcon, StarIcon, WaterDropIcon } from "@/components/icons";
@@ -127,6 +128,7 @@ export default function PlayPage() {
 
           {phase === "complete" && result && (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
+              <PaperPop seed={result.level * 7919 + result.coinsEarned} />
               {completedPicture ? (
                 <>
                   <div className="rounded-2xl bg-maze p-4 flex items-center justify-center">
