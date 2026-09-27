@@ -299,14 +299,6 @@ function ExitingPiece({
 export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
   const { cols, rows, pieces, mask } = puzzle;
   const pieceColors = useMemo(() => assignPieceColors(pieces, cols, rows), [pieces, cols, rows]);
-  /** A dot belongs to the lattice only if it touches a cell of the shape, so
-   * the grid stops at the silhouette's edge instead of ruling the whole
-   * rectangle. Corners are bounded by the four cells that meet at them. */
-  const cornerInShape = (r: number, c: number) =>
-    [[r - 1, c - 1], [r - 1, c], [r, c - 1], [r, c]].some(
-      ([rr, cc]) => rr >= 0 && rr < rows && cc >= 0 && cc < cols && mask[rr][cc]
-    );
-
   return (
     <div
       // No background of its own: the board's paper is drawn cell by cell
@@ -364,13 +356,15 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
             is behind it — the halos that keep two lines from reading as one
             — therefore paints in the page's own colour, not the board's. */}
 
-        {/* The lattice the maze is drawn on: a dot at every cell corner,
-            under everything else. One more dot than cells along each axis,
-            since corners bound them. */}
+        {/* The lattice the maze is drawn on: a dot at the centre of every
+            cell of the silhouette, drawn first so the lines pass over it
+            rather than beside it. A dot marks where a line can go, so a cell
+            still holding a piece hides its own dot and shows it again once
+            that piece leaves — the board empties to reveal the grid. */}
         <g fill="var(--sub2)" opacity={0.45}>
-          {Array.from({ length: rows + 1 }).flatMap((_, r) =>
-            Array.from({ length: cols + 1 }).map((__, c) =>
-              cornerInShape(r, c) ? <circle key={`dot-${r}-${c}`} cx={c} cy={r} r={DOT_RADIUS} /> : null
+          {Array.from({ length: rows }).flatMap((_, r) =>
+            Array.from({ length: cols }).map((__, c) =>
+              mask[r][c] ? <circle key={`dot-${r}-${c}`} cx={c + 0.5} cy={r + 0.5} r={DOT_RADIUS} /> : null
             )
           )}
         </g>
