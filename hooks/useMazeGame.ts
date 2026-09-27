@@ -6,6 +6,7 @@ import { pieceCanExit } from "@/lib/rules";
 import { maxHintsForLevel, maxUndosForLevel } from "@/lib/difficultyWave";
 import { EXIT_UNMOUNT_GRACE_MS, exitDurationMs } from "@/lib/exitMotion";
 import { hapticHint, hapticMistake, hapticSuccess } from "@/lib/haptics";
+import { soundBlocked, soundClear, soundComplete, soundHint, soundUndo } from "@/lib/sound";
 
 interface UseMazeGameOptions {
   puzzle: Puzzle;
@@ -104,6 +105,9 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       setHintPieceId((h) => (h === id ? null : h));
       setClearHistory((h) => [...h, id]);
       hapticSuccess();
+      // The last piece gets the finishing phrase instead of a pluck, so the
+      // two don't land on top of each other.
+      if (clearedCount + 1 < totalPieces) soundClear();
 
       setExitingPieces((prev) => {
         const nextMap = new Map(prev);
@@ -133,10 +137,11 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       setClearedCount(nextCount);
       if (nextCount === totalPieces) {
         finishedRef.current = true;
+        soundComplete(puzzle.level);
         onAllComplete();
       }
     },
-    [present, clearedCount, piecesById, totalPieces, onAllComplete, puzzle.cols, puzzle.rows]
+    [present, clearedCount, piecesById, totalPieces, onAllComplete, puzzle.cols, puzzle.rows, puzzle.level]
   );
 
   const tapCell = useCallback(
@@ -154,6 +159,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
         setMistakes((m) => m + 1);
         triggerFlash(id);
         hapticMistake();
+        soundBlocked();
         onMistake();
       }
     },
@@ -172,6 +178,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     setHintsUsed((h) => h + 1);
     setHintPieceId(pick.id);
     hapticHint();
+    soundHint();
   }, [present, puzzle.pieces, puzzle.cols, puzzle.rows, hintsUsed, maxHints]);
 
   /** Puts the most recently cleared piece back. Safe at any point: a piece
@@ -205,6 +212,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       return nextMap;
     });
     hapticHint();
+    soundUndo();
   }, [present, piecesById, clearHistory, undosUsed, maxUndos]);
 
   return {

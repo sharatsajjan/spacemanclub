@@ -17,6 +17,7 @@ export function defaultProfile(): PlayerProfile {
     theme: DEFAULT_THEME,
     playerName: "Player",
     collectedPictures: [],
+    soundEnabled: true,
     themeDefaultMigrated: true,
   };
 }

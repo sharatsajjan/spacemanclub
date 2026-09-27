@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayerProfile } from "@/hooks/usePlayerProfile";
 import { setTheme } from "@/lib/storage";
 import { ThemeStyle } from "@/components/ThemeStyle";
 import { ThemePicker } from "@/components/ThemePicker";
-import { BoltIcon, PaletteIcon, SettingsIcon } from "@/components/icons";
+import { BoltIcon, PaletteIcon, SettingsIcon, SoundOffIcon, SoundOnIcon } from "@/components/icons";
+import { setSoundEnabled } from "@/lib/sound";
 import { PictureTile } from "@/components/PictureTile";
 import { PICTURES, PICTURES_ENABLED } from "@/lib/pictures";
 import { ThemeId } from "@/lib/types";
@@ -16,6 +17,11 @@ export default function HomePage() {
   const { profile, hydrated, setProfile } = usePlayerProfile();
   const [showThemes, setShowThemes] = useState(false);
   const collected = profile.collectedPictures ?? [];
+  // A profile saved before sound existed has no setting, and reads as on.
+  const soundOn = profile.soundEnabled !== false;
+  useEffect(() => {
+    setSoundEnabled(soundOn);
+  }, [soundOn]);
 
   const handleThemeSelect = (id: ThemeId) => {
     setProfile((p) => setTheme(p, id));
@@ -92,9 +98,17 @@ export default function HomePage() {
             <IconButton onClick={() => setShowThemes((s) => !s)} label="Change theme">
               <PaletteIcon className="w-4 h-4" />
             </IconButton>
-            <IconButton label="Settings">
-              <SettingsIcon className="w-4 h-4" />
-            </IconButton>
+            <div className="flex gap-2">
+              <IconButton
+                onClick={() => setProfile((p) => ({ ...p, soundEnabled: !soundOn }))}
+                label={soundOn ? "Turn sound off" : "Turn sound on"}
+              >
+                {soundOn ? <SoundOnIcon className="w-4 h-4" /> : <SoundOffIcon className="w-4 h-4" />}
+              </IconButton>
+              <IconButton label="Settings">
+                <SettingsIcon className="w-4 h-4" />
+              </IconButton>
+            </div>
           </div>
         </div>
       </main>

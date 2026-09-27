@@ -45,6 +45,7 @@ npm run dev            # http://localhost:3000
 | `npm run verify` | generates ~500 boards and checks they are all playable |
 | `npm run measure` | reports how hard the generated boards are, by tier |
 | `npm run e2e` | browser checks — needs `npm run dev` running |
+| `npm run e2e:sound` | checks taps schedule the right notes, and that muting works |
 | `npm run e2e:playthrough -- 23` | plays one level to completion in a browser (add a path for screenshots) |
 
 The browser checks use Playwright. Two environment variables:
@@ -72,6 +73,7 @@ The engine, in the order a level passes through it:
 | `rules.ts` | whether a piece can leave — the only legality check |
 | `exitMotion.ts` | timing for the threading slide-out, shared by view and hook |
 | `themes.ts` | six palettes as CSS variables; `sepia` is the default |
+| `sound.ts` | every sound, synthesised — no audio files |
 | `storage.ts` | the player profile in `localStorage`, with migrations |
 | `scoring.ts` | stars and coins from mistakes and hints used |
 
@@ -187,6 +189,34 @@ so every piece leaves at the same speed. Start it in a `useLayoutEffect` that
 runs once — an inline ref callback restarts it on every render, which is what
 "the animation isn't smooth" turned out to mean.
 
+## Sound
+
+`lib/sound.ts` synthesises everything from oscillators and envelopes: no
+audio files, so nothing to load or license, and the tones can be tuned to sit
+with the look. Five sounds — a clear, a blocked tap, a hint, an undo and the
+finishing phrase — all short and soft, because this is feedback rather than a
+soundtrack. There is deliberately no background music: it is the first thing
+players mute, and it works against a game whose whole difficulty is
+concentration.
+
+A run of clears steps up a pentatonic scale and resets after a pause, so
+tapping quickly plays a rising phrase. Pentatonic because every step of it
+agrees with every other — the game cannot make a wrong-sounding note.
+
+Two things to know before changing it:
+
+- **The audio context must be created inside a user gesture.** Every entry
+  point is called from a tap handler, which is what makes that true. Creating
+  it on mount gets it suspended.
+- **Exponential ramps cannot end at zero**, and ramping to zero clicks on
+  some browsers. Envelopes fall to 0.0001.
+
+Sound is on by default, with a toggle in the play header and on the home
+screen, stored as `soundEnabled` on the profile. A profile saved before sound
+existed has no setting and reads as on. Worth knowing: on iOS, WebAudio
+ignores the physical silent switch, so that toggle is the only way a player
+can quiet the game.
+
 ## Look and feel
 
 Six themes as CSS variables (`themes.ts`, applied by `ThemeStyle`). The
@@ -216,6 +246,7 @@ on cream.
 | `e2e:session` | ten checks over one level: load, blocked tap costs a life, hint, undo, zoom, completion, advance, no console errors |
 | `e2e:fit` | every board fits three screen sizes with no scrollbar, cells stay within the size cap |
 | `e2e:animation` | the slide-out's dash, duration, lockstep, and that later taps do not restart one in flight |
+| `e2e:sound` | taps schedule notes, a run rises in pitch, a blocked tap differs, muting silences and persists |
 | `e2e:playthrough` | plays a level to completion, tapping only legal pieces |
 
 Run `verify` after anything in `mazeGenerator.ts`, `shapes.ts` or
@@ -234,9 +265,6 @@ production deploy is an explicit `create_deployment` with
 - **Difficulty is capped by monotonicity** (above). A genuine ordering
   constraint is the only way past it.
 - **Lives (3) and hints (1–2) are untuned.** No data behind either number.
-- **Sound: none.** A plan exists — short WebAudio tones, no files, no
-  background music, rising pitch for consecutive clears — but nothing is
-  built.
 - **`lib/pictures.ts` is disabled** (`PICTURES_ENABLED = false`). It reveals a
   pixel picture as pieces clear. If it comes back, note that a picture
   centred on the grid is now clipped by the silhouette.

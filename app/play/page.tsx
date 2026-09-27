@@ -11,7 +11,8 @@ import { MazeGameView } from "@/components/MazeGameView";
 import { PaperPop } from "@/components/PaperPop";
 import { PictureTile } from "@/components/PictureTile";
 import { getPicture } from "@/lib/pictures";
-import { PaletteIcon, SettingsIcon, TrophyIcon, StarIcon, WaterDropIcon } from "@/components/icons";
+import { PaletteIcon, SettingsIcon, SoundOffIcon, SoundOnIcon, TrophyIcon, StarIcon, WaterDropIcon } from "@/components/icons";
+import { setSoundEnabled } from "@/lib/sound";
 
 type Phase = "loading" | "playing" | "complete" | "outOfLives";
 
@@ -43,6 +44,12 @@ export default function PlayPage() {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // A profile saved before sound existed has no setting, and reads as on.
+  const soundOn = profile.soundEnabled !== false;
+  useEffect(() => {
+    setSoundEnabled(soundOn);
+  }, [soundOn]);
 
   useEffect(() => {
     if (phase === "outOfLives" && profile.lives > 0) setPhase("playing");
@@ -110,7 +117,18 @@ export default function PlayPage() {
                 {puzzle.tier}
               </div>
             </div>
-            <div className="flex gap-2 text-sub">
+            <div className="flex items-center gap-3 text-sub">
+              <button
+                type="button"
+                onClick={() => setProfile((p) => ({ ...p, soundEnabled: !soundOn }))}
+                aria-label={soundOn ? "Turn sound off" : "Turn sound on"}
+                aria-pressed={soundOn}
+                // Comfortably tappable without making the header heavy: the
+                // padding is the target, the icon stays small.
+                className="-m-2 p-2"
+              >
+                {soundOn ? <SoundOnIcon className="w-4 h-4" /> : <SoundOffIcon className="w-4 h-4" />}
+              </button>
               <PaletteIcon className="w-4 h-4" />
               <SettingsIcon className="w-4 h-4" />
             </div>

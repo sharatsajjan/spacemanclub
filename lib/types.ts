@@ -72,6 +72,9 @@ export interface PlayerProfile {
   playerName: string;
   /** Ids of pictures uncovered by finishing a level, in the order first found. */
   collectedPictures: string[];
+  /** Whether the game makes any sound. Optional so a profile saved before
+   * sound existed reads as on, which is the default for a new player too. */
+  soundEnabled?: boolean;
   /** Whether this profile has already been moved off a superseded default
    * theme. Without it the move would repeat on every load, and a player who
    * deliberately picked the old default would have it taken away again each
