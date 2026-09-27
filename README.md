@@ -4,7 +4,7 @@ A tap-to-clear arrow puzzle. Each level is a board of interlocking arrow
 pieces; tap a piece and it threads its way off the board, head first, if its
 path out is clear. Clear every piece to finish the level.
 
-Live at **https://spacemanclub.vercel.app**. Next.js 15 (App Router) +
+**v1.1** — live at **https://spacemanclub.vercel.app**. Next.js 15 (App Router) +
 TypeScript + Tailwind, deployed on Vercel. No backend, no accounts — a
 player's progress lives in `localStorage`.
 
@@ -285,6 +285,17 @@ Vercel project `spacemanclub`. Pushing the branch builds a preview; a
 production deploy is an explicit `create_deployment` with
 `target: "production"` (the promote endpoint returns 422 for this project).
 `master` holds the current work.
+
+## Versions
+
+Marked as branches rather than tags, because the push credential this was
+built with is scoped to a branch and rejects tags.
+
+| Marker | What it holds |
+| --- | --- |
+| `v1.1` | Silhouette boards, the Sepia theme, sound, per-level lives, queued pieces, the end-of-level stats card |
+| `v1` | The first production-ready build, before any of the above |
+| `v0.1` | The drag-to-trace game this started as |
 
 ## Known gaps
 
