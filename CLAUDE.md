@@ -27,7 +27,14 @@ hard**. Both record mistakes that have already been made here.
 - **Tag pushes are rejected (403)** — the credential is scoped to the branch.
   Use a branch as a version marker.
 - **This container cannot reach `vercel.app`.** A production deploy can be
-  confirmed through the Vercel API, not by loading the page.
+  confirmed through the Vercel API, not by loading the page. Ask for it by
+  the alias (`get_deployment` on `spacemanclub.vercel.app`) rather than by
+  deployment id: by id it can report `BUILDING` for minutes after the build
+  has actually finished.
+- **Pushing `master` deploys to production by itself.** The Vercel project
+  is connected to the repo, so a push to `master` builds and takes the
+  alias. Creating a deployment by hand after that just rebuilds the same
+  commit.
 
 ## Rules that are load-bearing
 

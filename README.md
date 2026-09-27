@@ -281,10 +281,15 @@ bug this project has had.
 
 ## Deploying
 
-Vercel project `spacemanclub`. Pushing the branch builds a preview; a
-production deploy is an explicit `create_deployment` with
-`target: "production"` (the promote endpoint returns 422 for this project).
-`master` holds the current work.
+Vercel project `spacemanclub`, connected to the repo. **Pushing `master`
+deploys to production**: it builds, takes the `spacemanclub.vercel.app`
+alias, and needs nothing else. Pushing any other branch builds a preview.
+
+Deploying a commit that is not on `master` takes an explicit
+`create_deployment` with `target: "production"` — the promote endpoint
+returns 422 for this project. Check the result by the alias rather than by
+deployment id, which goes stale and can report `BUILDING` long after the
+build has finished.
 
 ## Versions
 
