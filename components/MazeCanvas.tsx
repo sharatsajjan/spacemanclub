@@ -358,16 +358,11 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
         viewBox={`0 0 ${cols} ${rows}`}
         preserveAspectRatio="none"
       >
-        {/* The board's paper, one rect per cell of the silhouette, under
-            everything. Neighbouring rects meet exactly, so the shape reads
-            as one continuous sheet with the maze drawn on it. */}
-        <g fill="var(--maze)">
-          {Array.from({ length: rows }).flatMap((_, r) =>
-            Array.from({ length: cols }).map((__, c) =>
-              mask[r][c] ? <rect key={`paper-${r}-${c}`} x={c} y={r} width={1} height={1} /> : null
-            )
-          )}
-        </g>
+        {/* No sheet under the board: the maze is drawn straight onto the
+            page, so the silhouette is read from the lines themselves rather
+            than from a panel behind them. Everything that has to hide what
+            is behind it — the halos that keep two lines from reading as one
+            — therefore paints in the page's own colour, not the board's. */}
 
         {/* The lattice the maze is drawn on: a dot at every cell corner,
             under everything else. One more dot than cells along each axis,
@@ -401,7 +396,7 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
                 piece={piece}
                 cols={cols}
                 rows={rows}
-                color="var(--maze)"
+                color="var(--outer)"
                 width={HALO_WIDTH}
                 rotation={rotation}
                 arrowPath={ARROW_HALO_PATH}
@@ -412,7 +407,7 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
           return (
             <g key={piece.id} style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}>
               {path ? (
-                <path d={path} fill="none" stroke="var(--maze)" strokeWidth={HALO_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
+                <path d={path} fill="none" stroke="var(--outer)" strokeWidth={HALO_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
               ) : (
                 <rect
                   x={head.col + (1 - SINGLE_CELL_HALO_FILL) / 2}
@@ -420,11 +415,11 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
                   width={SINGLE_CELL_HALO_FILL}
                   height={SINGLE_CELL_HALO_FILL}
                   rx={0.14}
-                  fill="var(--maze)"
+                  fill="var(--outer)"
                 />
               )}
               <g transform={`translate(${head.col + 0.5} ${head.row + 0.5}) rotate(${rotation})`}>
-                <path d={ARROW_HALO_PATH} fill="var(--maze)" />
+                <path d={ARROW_HALO_PATH} fill="var(--outer)" />
               </g>
             </g>
           );
