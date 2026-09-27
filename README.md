@@ -295,7 +295,7 @@ built with is scoped to a branch and rejects tags.
 | --- | --- |
 | `v1.1` | Silhouette boards, the Sepia theme, sound, per-level lives, queued pieces, the end-of-level stats card |
 | `v1` | The first production-ready build, before any of the above |
-| `v0.1` | The drag-to-trace game this started as |
+| `v0.1` | An earlier tap-to-clear build, before the self-blocking coil fix |
 
 ## Known gaps
 
