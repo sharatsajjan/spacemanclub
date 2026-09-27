@@ -1,9 +1,9 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { pictureForLevel, pictureLayerFor } from "@/lib/pictures";
 import { LevelResult, Puzzle } from "@/lib/types";
-import { useMazeGame } from "@/hooks/useMazeGame";
+import { LevelSummary, useMazeGame } from "@/hooks/useMazeGame";
 import { computeLevelScore } from "@/lib/scoring";
 import { MazeCanvas } from "./MazeCanvas";
 import { LivesRow } from "./LivesRow";
@@ -11,9 +11,10 @@ import { BoosterBar } from "./BoosterBar";
 
 interface MazeGameViewProps {
   puzzle: Puzzle;
-  lives: number;
   onMistake: () => void;
   onComplete: (result: LevelResult) => void;
+  /** Called when the level's lives run out. The board stays as it is. */
+  onOutOfLives: (offerExtraLife: () => void) => void;
 }
 
 /** Successive taps of the zoom booster cycle through these scales. */
@@ -51,7 +52,7 @@ export function boardWidthFor(frameWidth: number, frameHeight: number, cols: num
  * patching state in during a later effect (which left a one-frame window
  * where old state could be read against a new, differently-sized puzzle).
  */
-export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameViewProps) {
+export function MazeGameView({ puzzle, onMistake, onComplete, onOutOfLives }: MazeGameViewProps) {
   const startedAtRef = useRef(Date.now());
   const [zoomStep, setZoomStep] = useState(0);
   const zoom = ZOOM_STEPS[zoomStep];
@@ -82,32 +83,47 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
   const game = useMazeGame({
     puzzle,
     onMistake,
-    onAllComplete: () => {
+    // The summary comes from the hook rather than being read back off it:
+    // the last clear's own counts are not in `game` yet when this runs.
+    onAllComplete: (summary: LevelSummary) => {
       const { stars, coinsEarned } = computeLevelScore({
         tier: puzzle.tier,
-        mistakes: game.mistakes,
-        hintsUsed: game.hintsUsed,
+        mistakes: summary.mistakes,
+        hintsUsed: summary.hintsUsed,
         pieceCount: puzzle.cols * puzzle.rows,
       });
       onComplete({
         level: puzzle.level,
         completed: true,
-        mistakes: game.mistakes,
-        hintsUsed: game.hintsUsed,
+        mistakes: summary.mistakes,
+        hintsUsed: summary.hintsUsed,
         elapsedMs: Date.now() - startedAtRef.current,
         stars,
         coinsEarned,
+        piecesCleared: summary.piecesCleared,
+        bestStreak: summary.bestStreak,
         pictureId: pictureLayer ? pictureForLevel(puzzle.level).id : undefined,
       });
     },
   });
 
+  // Reported upwards rather than handled here: the board stays put while the
+  // page decides what to offer, so a granted life resumes the same level
+  // rather than dealing a new board.
+  const { outOfLives, grantExtraLife } = game;
+  useEffect(() => {
+    if (outOfLives) onOutOfLives(grantExtraLife);
+  }, [outOfLives, grantExtraLife, onOutOfLives]);
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center justify-between mb-2">
-        <LivesRow lives={lives} />
-        <div className="text-[11px] font-bold text-sub2 tabular-nums">
-          {game.clearedCount}/{game.totalPieces} cleared
+        <LivesRow lives={game.livesLeft} />
+        {/* Counts down rather than up: what is left to do is the number the
+            player is actually working against. */}
+        <div className="font-extrabold text-sub tabular-nums">
+          <span className="text-base">{game.remainingPieces}</span>
+          <span className="text-[11px] text-sub2"> / {game.totalPieces} left</span>
         </div>
       </div>
 
@@ -124,6 +140,7 @@ export function MazeGameView({ puzzle, lives, onMistake, onComplete }: MazeGameV
             exitingPieces={game.exitingPieces}
             flashPieceId={game.flashPieceId}
             hintPieceId={game.hintPieceId}
+            queuedIds={game.queuedIds}
             onTap={game.tapCell}
           />
         </div>

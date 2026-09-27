@@ -29,6 +29,13 @@ hard**. Both record mistakes that have already been made here.
 - **This container cannot reach `vercel.app`.** A production deploy can be
   confirmed through the Vercel API, not by loading the page.
 
+## Rules that are load-bearing
+
+- **Queuing a blocked piece costs a life, and lives are per level.** That is
+  what stops a player queuing the whole board and watching it solve itself.
+  Do not make queuing free, and do not lift the life cost, without replacing
+  the cap with something else.
+
 ## Style
 
 The code is commented in prose, explaining *why* rather than what — including

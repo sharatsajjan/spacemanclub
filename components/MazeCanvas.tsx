@@ -14,6 +14,9 @@ interface MazeCanvasProps {
   exitingPieces: Map<number, Direction>;
   flashPieceId: number | null;
   hintPieceId: number | null;
+  /** Pieces tapped while blocked, waiting for their lane to open. Marked so
+   * the player can see the move is still coming. */
+  queuedIds: number[];
   disabled?: boolean;
   onTap: (row: number, col: number) => void;
 }
@@ -57,6 +60,10 @@ const SINGLE_CELL_HALO_FILL = 0.28;
  * runs, well clear of any stroke, so the grid is there from the first
  * frame and the maze reads as drawn on it. */
 const DOT_RADIUS = 0.045;
+/** The width of the trace around a queued piece, in cells. Wide enough to
+ * read at a glance on a crowded board, narrow enough not to touch its
+ * neighbours' lines. */
+const QUEUED_HALO_WIDTH = 0.42;
 
 /** Must match the length of every theme's piecePalette. */
 const PALETTE_SIZE = 6;
@@ -296,7 +303,7 @@ function ExitingPiece({
   );
 }
 
-export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flashPieceId, hintPieceId, disabled, onTap }: MazeCanvasProps) {
+export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flashPieceId, hintPieceId, queuedIds, disabled, onTap }: MazeCanvasProps) {
   const { cols, rows, pieces, mask } = puzzle;
   const pieceColors = useMemo(() => assignPieceColors(pieces, cols, rows), [pieces, cols, rows]);
   return (
@@ -429,6 +436,7 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
           if (!isPresent && !exitDir) return null;
           const isFlashing = flashPieceId === piece.id;
           const isHinted = hintPieceId === piece.id;
+          const isQueued = queuedIds.includes(piece.id);
           const color = isFlashing ? "var(--danger)" : isHinted ? "var(--hint)" : `var(--piece-${pieceColors[piece.id]})`;
           const path = buildPiecePath(piece, head);
           const rotation = ARROW_ROTATION[piece.direction];
@@ -452,9 +460,25 @@ export function MazeCanvas({ puzzle, present, pictureLayer, exitingPieces, flash
             <g
               key={piece.id}
               data-hint={isHinted || undefined}
+              data-queued={isQueued || undefined}
               className={isHinted ? "animate-pulse" : undefined}
               style={{ opacity: isPresent ? 1 : 0, transition: "opacity 150ms" }}
             >
+              {/* A queued piece is traced in its own colour, a little wider
+                  than the line: it marks the piece as spoken for without
+                  hiding which way it is pointing. */}
+              {isQueued && path ? (
+                <path
+                  d={path}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={QUEUED_HALO_WIDTH}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.28}
+                  className="animate-pulse"
+                />
+              ) : null}
               {path ? (
                 <path d={path} fill="none" stroke={color} strokeWidth={LINE_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
               ) : (

@@ -52,6 +52,11 @@ export interface LevelResult {
   elapsedMs: number;
   stars: 1 | 2 | 3;
   coinsEarned: number;
+  /** How many pieces the level held — all of them, since a level ends when
+   * the board is empty. */
+  piecesCleared: number;
+  /** The longest run of clears without a blocked tap or an undo. */
+  bestStreak: number;
   /** The picture uncovered by finishing this level, if the board was big
    * enough to hide one. */
   pictureId?: string;
@@ -65,13 +70,21 @@ export interface PlayerProfile {
   coins: number;
   totalStars: number;
   totalLevelsCompleted: number;
+  /** Left over from when lives were a session-wide allowance that refilled
+   * on a timer. Lives belong to the level now (see LIVES_PER_LEVEL); these
+   * are kept only so an existing saved profile still parses. */
   lives: number;
-  /** Epoch ms when the next life finishes refilling; null when lives are full. */
   nextLifeAt: number | null;
   theme: ThemeId;
   playerName: string;
   /** Ids of pictures uncovered by finishing a level, in the order first found. */
   collectedPictures: string[];
+  /** Lines cleared across every level ever played. */
+  totalPiecesCleared?: number;
+  /** The longest run of clears in a single level, ever. */
+  longestStreak?: number;
+  /** Best time per level, in ms — what a "new best" is measured against. */
+  bestTimeMsByLevel?: Record<number, number>;
   /** Whether the game makes any sound. Optional so a profile saved before
    * sound existed reads as on, which is the default for a new player too. */
   soundEnabled?: boolean;

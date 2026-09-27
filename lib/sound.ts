@@ -15,7 +15,7 @@
 import { mulberry32 } from "./rng";
 
 /** Soft: the loudest thing here still sits under the phone's own UI sounds. */
-const MASTER_GAIN = 0.32;
+const MASTER_GAIN = 0.28;
 
 /**
  * A run of clears steps up a pentatonic scale, so tapping quickly plays a
@@ -111,24 +111,91 @@ function note(semitones: number): number {
 }
 
 /**
- * A piece cleared: a short wooden pluck, a step higher than the last one if
- * they are coming quickly.
+ * A short burst of filtered noise, which is what makes a pluck sound like
+ * something struck rather than like a beep. Tones alone read as electronic
+ * whatever their envelope.
  */
-export function soundClear(): void {
+function knock(gain: number, brightness: number, delay = 0): void {
+  const a = audio();
+  if (!a) return;
+  try {
+    const startAt = a.ctx.currentTime + delay;
+    const length = Math.floor(a.ctx.sampleRate * 0.05);
+    const buffer = a.ctx.createBuffer(1, length, a.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) {
+      // Noise that dies away over the buffer, so the burst has a shape of
+      // its own even before the envelope is applied.
+      data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+    }
+    const src = a.ctx.createBufferSource();
+    src.buffer = buffer;
+
+    // Band-passed: unfiltered noise is a hiss, and the band is what gives
+    // the knock a sense of the material it came off.
+    const filter = a.ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = brightness;
+    filter.Q.value = 1.4;
+
+    const env = a.ctx.createGain();
+    env.gain.setValueAtTime(gain, startAt);
+    env.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.05);
+
+    src.connect(filter);
+    filter.connect(env);
+    env.connect(a.out);
+    src.start(startAt);
+    src.stop(startAt + 0.06);
+  } catch {
+    // nothing to do
+  }
+}
+
+/**
+ * A piece cleared: a wooden pluck, a step higher than the last one if they
+ * are coming quickly.
+ *
+ * Longer pieces sound heavier. A board where every line sounds identical
+ * gives the ear nothing, and length is the one thing about a piece the
+ * player can already see, so hearing it agrees with what they are looking
+ * at.
+ */
+export function soundClear(pieceLength = 4): void {
   const now = Date.now();
   streak = now - lastClearAt > STREAK_RESET_MS ? 0 : Math.min(streak + 1, STREAK_STEPS.length - 1);
   lastClearAt = now;
 
-  const base = note(24 + STREAK_STEPS[streak]); // from A5 up
-  tone({ freq: base, type: "triangle", decay: 0.16, gain: 0.5 });
+  // Up to an octave down for the longest lines, quantised to the scale so a
+  // heavy piece still lands in tune.
+  const weight = Math.min(12, Math.round(Math.min(1, (pieceLength - 2) / 16) * 12));
+  const base = note(24 + STREAK_STEPS[streak] - weight);
+  knock(0.22, base * 1.6);
+  tone({ freq: base, type: "triangle", decay: 0.16, gain: 0.44 });
   // A quiet octave above gives the pluck its edge without making it louder.
-  tone({ freq: base * 2, type: "sine", decay: 0.1, gain: 0.16, delay: 0.005 });
+  tone({ freq: base * 2, type: "sine", decay: 0.1, gain: 0.13, delay: 0.006 });
+}
+
+/**
+ * A queued piece going by itself: the same pluck, softer and without the
+ * knock, so it reads as the board moving rather than as a tap. It also
+ * leaves the run alone — the player did not play this one.
+ */
+export function soundQueuedGo(pieceLength = 4): void {
+  const weight = Math.min(12, Math.round(Math.min(1, (pieceLength - 2) / 16) * 12));
+  const base = note(21 - weight);
+  tone({ freq: base, type: "sine", decay: 0.24, gain: 0.3 });
+  tone({ freq: base * 1.5, type: "sine", decay: 0.18, gain: 0.12, delay: 0.03 });
 }
 
 /** A tap that cannot move: a low knock, not a buzzer. Ends the run. */
 export function soundBlocked(): void {
   streak = 0;
-  tone({ freq: note(-4), endFreq: note(-11), type: "triangle", decay: 0.14, gain: 0.45 });
+  knock(0.3, 260);
+  tone({ freq: note(-4), endFreq: note(-11), type: "triangle", decay: 0.14, gain: 0.4 });
+  // A short rise on the end: the tap cost a life, but the piece is marked
+  // and will go when it can, and the sound should not be purely a refusal.
+  tone({ freq: note(12), endFreq: note(16), type: "sine", decay: 0.12, gain: 0.12, delay: 0.1 });
 }
 
 /** The hint lit a piece up. */
@@ -151,7 +218,12 @@ export function soundComplete(seed = 1): void {
   const top = [36, 40, 43][Math.floor(mulberry32(seed)() * 3)];
   const phrase = [24, 28, 31, top];
   phrase.forEach((semitone, i) => {
-    tone({ freq: note(semitone), type: "triangle", delay: i * 0.085, decay: 0.32, gain: 0.42 });
-    tone({ freq: note(semitone) * 2, type: "sine", delay: i * 0.085 + 0.004, decay: 0.2, gain: 0.12 });
+    const at = i * 0.095;
+    knock(0.1, note(semitone) * 2, at);
+    tone({ freq: note(semitone), type: "triangle", delay: at, decay: 0.34, gain: 0.34 });
+    tone({ freq: note(semitone) * 2, type: "sine", delay: at + 0.004, decay: 0.22, gain: 0.1 });
   });
+  // The root underneath, quiet and longer, so the phrase settles instead of
+  // stopping.
+  tone({ freq: note(12), type: "sine", delay: 0.02, decay: 0.9, gain: 0.14 });
 }

@@ -6,13 +6,40 @@ import { pieceCanExit } from "@/lib/rules";
 import { maxHintsForLevel, maxUndosForLevel } from "@/lib/difficultyWave";
 import { EXIT_UNMOUNT_GRACE_MS, exitDurationMs } from "@/lib/exitMotion";
 import { hapticHint, hapticMistake, hapticSuccess } from "@/lib/haptics";
-import { soundBlocked, soundClear, soundComplete, soundHint, soundUndo } from "@/lib/sound";
+import { soundBlocked, soundClear, soundComplete, soundHint, soundQueuedGo, soundUndo } from "@/lib/sound";
 
 interface UseMazeGameOptions {
   puzzle: Puzzle;
   onMistake: () => void;
-  onAllComplete: () => void;
+  onAllComplete: (summary: LevelSummary) => void;
 }
+
+/** What the level cost and what it was worth, handed over when it ends. */
+export interface LevelSummary {
+  mistakes: number;
+  hintsUsed: number;
+  piecesCleared: number;
+  /** The longest run of clears without a blocked tap or an undo. */
+  bestStreak: number;
+}
+
+/** How long a queued piece waits before leaving once its lane opens. Long
+ * enough to read as its own move rather than part of the tap that freed it. */
+const QUEUED_EXIT_DELAY_MS = 260;
+
+/**
+ * Lives belong to the level, not to the session.
+ *
+ * They used to be a session-wide allowance that refilled on a timer, so
+ * three blocked taps while learning the rule locked a new player out of the
+ * game for a quarter of an hour. Per level, running out costs the level and
+ * nothing else: the board is there to try again immediately.
+ *
+ * It also caps the queue for free. A blocked tap marks the piece to leave
+ * later, which would solve the board by itself if a player could tap
+ * everything — but each one costs a life, so a level allows three.
+ */
+export const LIVES_PER_LEVEL = 3;
 
 /**
  * Which cells start occupied — derived from the pieces, not filled in.
@@ -47,12 +74,28 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
   const [flashPieceId, setFlashPieceId] = useState<number | null>(null);
   const [hintPieceId, setHintPieceId] = useState<number | null>(null);
   const [mistakes, setMistakes] = useState(0);
+  /** Lives granted mid-level, on top of the level's own allowance. */
+  const [extraLives, setExtraLives] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   // Pieces mid slide-out animation: kept rendered (in their exit direction)
   // for a short window after they're already removed from `present`, so
   // gameplay logic (what's blocking, what's tappable) updates instantly
   // while the visual only catches up a moment later.
   const [exitingPieces, setExitingPieces] = useState<Map<number, Direction>>(() => new Map());
+  /**
+   * Pieces the player has tapped while blocked. They stay marked on the
+   * board and leave by themselves the moment their lane opens — a wrong tap
+   * is a statement of intent rather than only a mistake.
+   *
+   * There is no separate cap on how many can be queued, because there does
+   * not need to be one: queuing costs a life, and lives are per level, so
+   * the board can never be queued into solving itself.
+   */
+  const [queuedIds, setQueuedIds] = useState<number[]>([]);
+  /** The run of clears since the last blocked tap or undo, and the best such
+   * run this level — both reported at the end. */
+  const [streak, setStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(0);
   /** Ids of cleared pieces, most recent last — the undo stack. */
   const [clearHistory, setClearHistory] = useState<number[]>([]);
   const [undosUsed, setUndosUsed] = useState(0);
@@ -70,9 +113,13 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     setFlashPieceId(null);
     setHintPieceId(null);
     setMistakes(0);
+    setExtraLives(0);
     setHintsUsed(0);
     setClearHistory([]);
     setUndosUsed(0);
+    setQueuedIds([]);
+    setStreak(0);
+    setBestStreak(0);
     finishedRef.current = false;
     exitTimeoutsRef.current.forEach((t) => clearTimeout(t));
     exitTimeoutsRef.current.clear();
@@ -89,6 +136,10 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     };
   }, []);
 
+  const livesLeft = Math.max(0, LIVES_PER_LEVEL + extraLives - mistakes);
+  /** One more try on this level, without restarting the board. */
+  const grantExtraLife = useCallback(() => setExtraLives((e) => e + 1), []);
+
   const triggerFlash = useCallback((pieceId: number) => {
     setFlashPieceId(pieceId);
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
@@ -96,7 +147,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
   }, []);
 
   const clearPiece = useCallback(
-    (id: number) => {
+    (id: number, auto = false) => {
       const piece = piecesById.get(id);
       if (!piece) return;
       const next = present.map((r) => r.slice());
@@ -104,10 +155,25 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       setPresent(next);
       setHintPieceId((h) => (h === id ? null : h));
       setClearHistory((h) => [...h, id]);
+      setQueuedIds((q) => (q.includes(id) ? q.filter((qid) => qid !== id) : q));
       hapticSuccess();
       // The last piece gets the finishing phrase instead of a pluck, so the
-      // two don't land on top of each other.
-      if (clearedCount + 1 < totalPieces) soundClear();
+      // two don't land on top of each other. A queued piece leaving on its
+      // own is quieter: the player did not just tap it.
+      if (clearedCount + 1 < totalPieces) {
+        if (auto) soundQueuedGo(piece.cells.length);
+        else soundClear(piece.cells.length);
+      }
+
+      // A run counts taps the player got right. A piece leaving on its own
+      // is not one of those, so it neither extends nor breaks the run.
+      if (!auto) {
+        setStreak((s) => {
+          const next = s + 1;
+          setBestStreak((b) => Math.max(b, next));
+          return next;
+        });
+      }
 
       setExitingPieces((prev) => {
         const nextMap = new Map(prev);
@@ -138,15 +204,46 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       if (nextCount === totalPieces) {
         finishedRef.current = true;
         soundComplete(puzzle.level);
-        onAllComplete();
+        onAllComplete({
+          mistakes,
+          hintsUsed,
+          piecesCleared: totalPieces,
+          bestStreak: Math.max(bestStreak, auto ? streak : streak + 1),
+        });
       }
     },
-    [present, clearedCount, piecesById, totalPieces, onAllComplete, puzzle.cols, puzzle.rows, puzzle.level]
+    [
+      present, clearedCount, piecesById, totalPieces, onAllComplete,
+      puzzle.cols, puzzle.rows, puzzle.level, mistakes, hintsUsed, streak, bestStreak,
+    ]
   );
+
+  /**
+   * Lets queued pieces go once their lane opens.
+   *
+   * One at a time, on a short delay: a clear can free several queued pieces
+   * at once, and firing them together reads as a glitch rather than as the
+   * board unwinding. Each one re-runs this effect, so a chain of them leaves
+   * in order.
+   */
+  useEffect(() => {
+    if (finishedRef.current || queuedIds.length === 0) return;
+    const ready = queuedIds.find((id) => {
+      const piece = piecesById.get(id);
+      return (
+        piece &&
+        present[piece.cells[0].row][piece.cells[0].col] &&
+        pieceCanExit(present, piece.cells, puzzle.cols, puzzle.rows, piece.direction)
+      );
+    });
+    if (ready === undefined) return;
+    const timer = setTimeout(() => clearPiece(ready, true), QUEUED_EXIT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [queuedIds, present, piecesById, puzzle.cols, puzzle.rows, clearPiece]);
 
   const tapCell = useCallback(
     (row: number, col: number) => {
-      if (finishedRef.current) return;
+      if (finishedRef.current || livesLeft === 0) return;
       const id = pieceIdGrid[row][col];
       if (id === -1 || !present[row][col]) return; // already cleared, no-op
 
@@ -156,14 +253,18 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
       if (canExit) {
         clearPiece(id);
       } else {
+        // Blocked: it costs a life, and the piece stays marked. It will go
+        // by itself the moment its lane opens, so the tap is not wasted.
         setMistakes((m) => m + 1);
+        setStreak(0);
+        setQueuedIds((q) => (q.includes(id) ? q : [...q, id]));
         triggerFlash(id);
         hapticMistake();
         soundBlocked();
         onMistake();
       }
     },
-    [present, pieceIdGrid, piecesById, puzzle.cols, puzzle.rows, clearPiece, onMistake, triggerFlash]
+    [present, pieceIdGrid, piecesById, puzzle.cols, puzzle.rows, clearPiece, onMistake, triggerFlash, livesLeft]
   );
 
   const requestHint = useCallback(() => {
@@ -196,6 +297,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     setPresent(next);
     setClearHistory((h) => h.slice(0, -1));
     setUndosUsed((u) => u + 1);
+    setStreak(0);
     setClearedCount((n) => Math.max(0, n - 1));
 
     // Cancel any in-flight slide-out so the piece doesn't animate away while
@@ -217,6 +319,7 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
 
   return {
     present,
+    queuedIds,
     exitingPieces,
     flashPieceId,
     hintPieceId,
@@ -228,6 +331,12 @@ export function useMazeGame({ puzzle, onMistake, onAllComplete }: UseMazeGameOpt
     canUndo: clearHistory.length > 0 && undosUsed < maxUndos,
     clearedCount,
     totalPieces,
+    remainingPieces: totalPieces - clearedCount,
+    livesLeft,
+    outOfLives: livesLeft === 0,
+    grantExtraLife,
+    streak,
+    bestStreak,
     tapCell,
     requestHint,
     undoLastClear,

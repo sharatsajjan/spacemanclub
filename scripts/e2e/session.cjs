@@ -62,7 +62,8 @@ function step(name, ok, detail = "") {
     }));
     return { pieces: JSON.parse(el.dataset.pieces), cols, rows, cells };
   });
-  const progress = async () => (await page.evaluate(() => document.body.innerText.match(/(\d+)\/(\d+) cleared/)?.[0])) ?? "?";
+  // The board counts down what is left, not up what is done.
+  const progress = async () => (await page.evaluate(() => document.body.innerText.match(/(\d+) \/ (\d+) left/)?.[0])) ?? "?";
   const lives = async () => page.$$eval('[aria-label$="lives remaining"] svg', (els) =>
     els.filter((e) => !e.style.color.includes("chip")).length);
   const badge = async (label) => page.$eval(`button[aria-label^="${label}"]`, (b) => b.textContent.replace(/[A-Za-z]/g, "").trim());

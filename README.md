@@ -46,6 +46,7 @@ npm run dev            # http://localhost:3000
 | `npm run measure` | reports how hard the generated boards are, by tier |
 | `npm run e2e` | browser checks — needs `npm run dev` running |
 | `npm run e2e:sound` | checks taps schedule the right notes, and that muting works |
+| `npm run e2e:lives` | checks the lives, the queued-piece rule, and the ad floor |
 | `npm run e2e:playthrough -- 23` | plays one level to completion in a browser (add a path for screenshots) |
 
 The browser checks use Playwright. Two environment variables:
@@ -189,6 +190,30 @@ so every piece leaves at the same speed. Start it in a `useLayoutEffect` that
 runs once — an inline ref callback restarts it on every render, which is what
 "the animation isn't smooth" turned out to mean.
 
+## Lives, wrong taps, and the ad
+
+Three rules that hold each other up:
+
+- **Lives belong to the level, not the session.** Three per level; running
+  out costs the level and nothing else, with the board there to try again.
+  They used to be a session allowance refilling on a 15-minute timer, so
+  three blocked taps while learning the rule locked a new player out of the
+  game entirely.
+- **A blocked tap marks the piece.** It stays highlighted and leaves by
+  itself the moment its lane opens, so a wrong tap states an intention
+  instead of only costing something. Queued pieces go one at a time on a
+  short delay, and a chain of them unwinds in order.
+- **No ad before level 10.** The only ad in the game offers a life to keep a
+  failed board going; below that level a player is still learning what
+  "blocked" means, and gets a plain retry instead.
+
+The first two are what make the third safe, and they also close the obvious
+hole in the second: if queuing were free, the winning move would be to tap
+every piece and watch the board solve itself. Queuing costs a life, and
+lives are per level, so a board can be queued at most three times. **The life
+cost is the queue limit — do not add a separate one, and do not make queuing
+free without adding one.**
+
 ## Sound
 
 `lib/sound.ts` synthesises everything from oscillators and envelopes: no
@@ -247,6 +272,7 @@ on cream.
 | `e2e:fit` | every board fits three screen sizes with no scrollbar, cells stay within the size cap |
 | `e2e:animation` | the slide-out's dash, duration, lockstep, and that later taps do not restart one in flight |
 | `e2e:sound` | taps schedule notes, a run rises in pitch, a blocked tap differs, muting silences and persists |
+| `e2e:lives` | lives are per level, a blocked tap marks its piece and it leaves when freed, running out ends the level, the ad floor holds |
 | `e2e:playthrough` | plays a level to completion, tapping only legal pieces |
 
 Run `verify` after anything in `mazeGenerator.ts`, `shapes.ts` or
@@ -264,7 +290,8 @@ production deploy is an explicit `create_deployment` with
 
 - **Difficulty is capped by monotonicity** (above). A genuine ordering
   constraint is the only way past it.
-- **Lives (3) and hints (1–2) are untuned.** No data behind either number.
+- **Hints (1–2) are untuned.** No data behind the number. Lives are three
+  per level, which at least now fails safe.
 - **`lib/pictures.ts` is disabled** (`PICTURES_ENABLED = false`). It reveals a
   pixel picture as pieces clear. If it comes back, note that a picture
   centred on the grid is now clipped by the silhouette.

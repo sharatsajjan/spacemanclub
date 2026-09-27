@@ -2,8 +2,9 @@ import { LevelResult, PlayerProfile } from "./types";
 import { DEFAULT_THEME, SUPERSEDED_DEFAULT_THEME } from "./themes";
 
 const PROFILE_KEY = "arrowflow.profile.v2";
-export const MAX_LIVES = 3;
-export const LIFE_REFILL_MS = 15 * 60 * 1000;
+/** Only for the legacy profile fields below. Lives are per level now, and
+ * that number lives with the game (see LIVES_PER_LEVEL in useMazeGame). */
+const LEGACY_FULL_LIVES = 3;
 
 export function defaultProfile(): PlayerProfile {
   return {
@@ -12,7 +13,7 @@ export function defaultProfile(): PlayerProfile {
     coins: 0,
     totalStars: 0,
     totalLevelsCompleted: 0,
-    lives: MAX_LIVES,
+    lives: LEGACY_FULL_LIVES,
     nextLifeAt: null,
     theme: DEFAULT_THEME,
     playerName: "Player",
@@ -20,20 +21,6 @@ export function defaultProfile(): PlayerProfile {
     soundEnabled: true,
     themeDefaultMigrated: true,
   };
-}
-
-/** Recomputes lives against the current time — refills one life per LIFE_REFILL_MS elapsed. */
-export function refillLives(profile: PlayerProfile): PlayerProfile {
-  if (profile.lives >= MAX_LIVES || profile.nextLifeAt === null) return profile;
-  let lives = profile.lives;
-  let nextLifeAt: number | null = profile.nextLifeAt;
-  const now = Date.now();
-  while (nextLifeAt !== null && now >= nextLifeAt && lives < MAX_LIVES) {
-    lives += 1;
-    nextLifeAt = lives < MAX_LIVES ? nextLifeAt + LIFE_REFILL_MS : null;
-  }
-  if (lives === profile.lives && nextLifeAt === profile.nextLifeAt) return profile;
-  return { ...profile, lives, nextLifeAt };
 }
 
 export function loadProfile(): PlayerProfile {
@@ -46,7 +33,7 @@ export function loadProfile(): PlayerProfile {
     // legacy profile has no such key, and merging over defaultProfile would
     // hand it the default's "already done" and skip the move entirely.
     const alreadyMigrated = parsed?.themeDefaultMigrated === true;
-    const profile = refillLives({ ...defaultProfile(), ...parsed });
+    const profile: PlayerProfile = { ...defaultProfile(), ...parsed };
     // Almost nobody opens the theme picker, so a saved theme matching the old
     // default was inherited rather than chosen — and changing DEFAULT_THEME
     // alone would leave every existing player on it forever. Move those
@@ -79,31 +66,14 @@ export function saveProfile(profile: PlayerProfile): void {
   }
 }
 
-/** Loses one life; starts the refill timer if this is the first life lost since full. */
-export function loseLife(profile: PlayerProfile): PlayerProfile {
-  const refreshed = refillLives(profile);
-  if (refreshed.lives <= 0) return refreshed;
-  const lives = refreshed.lives - 1;
-  const nextLifeAt = refreshed.nextLifeAt ?? Date.now() + LIFE_REFILL_MS;
-  const next = { ...refreshed, lives, nextLifeAt };
-  saveProfile(next);
-  return next;
-}
-
-export function grantLifeFromAd(profile: PlayerProfile): PlayerProfile {
-  const refreshed = refillLives(profile);
-  const lives = Math.min(MAX_LIVES, refreshed.lives + 1);
-  const nextLifeAt = lives >= MAX_LIVES ? null : refreshed.nextLifeAt;
-  const next = { ...refreshed, lives, nextLifeAt };
-  saveProfile(next);
-  return next;
-}
-
 export interface ApplyLevelOutcome {
   profile: PlayerProfile;
   isNewBest: boolean;
   /** True when this level's picture had never been uncovered before. */
   isNewPicture: boolean;
+  /** True when this run beat the player's own time for this level. There is
+   * no badge for a first attempt — everything is a record then. */
+  isBestTime: boolean;
 }
 
 /** Folds a completed level's result into the profile: coins, stars, level progression, pictures. */
@@ -121,8 +91,19 @@ export function applyLevelResult(profile: PlayerProfile, result: LevelResult): A
   const isNewPicture = !!result.pictureId && !collected.includes(result.pictureId);
   next.collectedPictures = isNewPicture ? [...collected, result.pictureId!] : collected;
 
+  next.totalPiecesCleared = (next.totalPiecesCleared ?? 0) + result.piecesCleared;
+  next.longestStreak = Math.max(next.longestStreak ?? 0, result.bestStreak);
+
+  const bestTimes = { ...(next.bestTimeMsByLevel ?? {}) };
+  const previousBest = bestTimes[result.level];
+  const isBestTime = previousBest !== undefined && result.elapsedMs < previousBest;
+  if (previousBest === undefined || result.elapsedMs < previousBest) {
+    bestTimes[result.level] = result.elapsedMs;
+  }
+  next.bestTimeMsByLevel = bestTimes;
+
   saveProfile(next);
-  return { profile: next, isNewBest, isNewPicture };
+  return { profile: next, isNewBest, isNewPicture, isBestTime };
 }
 
 export function setTheme(profile: PlayerProfile, theme: PlayerProfile["theme"]): PlayerProfile {
