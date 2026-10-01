@@ -24,7 +24,7 @@ export default function HomePage() {
   return (
     <>
       <ThemeStyle themeId={profile.theme} />
-      <main className="min-h-screen bg-outer flex flex-col items-center px-4 py-8">
+      <main className="min-h-screen-safe bg-outer flex flex-col items-center px-4 py-8">
         <div className="w-full max-w-sm flex flex-col flex-1">
           <div className="flex items-center gap-2.5 mb-6">
             <div

@@ -48,3 +48,5 @@ npm run dev
 ```
 
 Open http://localhost:3000.
+
+For the Android app (APK builds, signing, icons) see [ANDROID.md](ANDROID.md).

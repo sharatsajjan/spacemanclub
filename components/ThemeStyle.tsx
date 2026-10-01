@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { ThemeId } from "@/lib/types";
 import { getTheme } from "@/lib/themes";
+import { syncSystemBars } from "@/lib/native";
 
 /** Applies the given theme's colors as CSS variables on the document root. */
 export function ThemeStyle({ themeId }: { themeId: ThemeId }) {
@@ -25,6 +26,7 @@ export function ThemeStyle({ themeId }: { themeId: ThemeId }) {
     root.setProperty("--danger", theme.danger);
     root.setProperty("--hint", theme.hint);
     theme.piecePalette.forEach((color, i) => root.setProperty(`--piece-${i}`, color));
+    syncSystemBars(theme.outer);
   }, [themeId]);
 
   return null;

@@ -1,0 +1,93 @@
+name: Android build
+
+on:
+  push:
+    branches: [master, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Each build gets a higher versionCode so it installs over the last one.
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build web app and copy it into the Android project
+        run: npm run android:sync
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug -PversionCode=$VERSION_CODE -PversionName=$VERSION_NAME --stacktrace
+
+      - name: Rename debug APK
+        run: mv android/app/build/outputs/apk/debug/app-debug.apk ArrowFlow-${VERSION_NAME}-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ArrowFlow-debug-apk
+          path: ArrowFlow-*-debug.apk
+          if-no-files-found: error
+
+      # Signed release APK + Play Store bundle, only once the upload key has
+      # been added as repository secrets (see ANDROID.md).
+      - name: Restore upload keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No ANDROID_KEYSTORE_BASE64 secret; skipping the signed release build."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build signed release APK and AAB
+        if: steps.keystore.outputs.present == 'true'
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/upload.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease bundleRelease -PversionCode=$VERSION_CODE -PversionName=$VERSION_NAME --stacktrace
+          mv app/build/outputs/apk/release/app-release.apk ../ArrowFlow-${VERSION_NAME}-release.apk
+          mv app/build/outputs/bundle/release/app-release.aab ../ArrowFlow-${VERSION_NAME}-release.aab
+
+      - uses: actions/upload-artifact@v4
+        if: steps.keystore.outputs.present == 'true'
+        with:
+          name: ArrowFlow-release
+          path: |
+            ArrowFlow-*-release.apk
+            ArrowFlow-*-release.aab
+          if-no-files-found: error

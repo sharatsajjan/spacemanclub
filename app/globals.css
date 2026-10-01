@@ -4,21 +4,29 @@
 
 :root {
   color-scheme: light;
-  /* Ocean theme defaults (matches lib/themes.ts DEFAULT_THEME) so there's no flash before hydration. */
-  --outer: #cdd6d8;
-  --panel: #e6eded;
-  --maze: #dbe6e6;
-  --text: #2f4a4c;
-  --sub: #5f8285;
-  --sub2: #7fa0a2;
-  --accent: #2f6b6e;
-  --accent2: #5c8a52;
-  --accent3: #3f8a8f;
-  --line: #2f6b6e;
-  --line-done: rgba(47, 107, 110, 0.3);
-  --btn-text: #eef7f7;
-  --chip: rgba(47, 107, 110, 0.1);
-  --danger: #a35c52;
+  /* Sepia theme defaults (matches lib/themes.ts DEFAULT_THEME, and the Android
+     splash screen) so there's no flash of another theme before hydration. */
+  --outer: #e6dccb;
+  --panel: #fdf8ef;
+  --maze: #f5ede0;
+  --text: #3b2f22;
+  --sub: #6e5c46;
+  --sub2: #b8a894;
+  --accent: #5a4632;
+  --accent2: #c1731f;
+  --accent3: #5a4632;
+  --line: #5a4632;
+  --line-done: rgba(90, 70, 50, 0.3);
+  --btn-text: #fdf8ef;
+  --chip: rgba(90, 70, 50, 0.1);
+  --danger: #9c3f26;
+  /* System bar / notch insets. viewport-fit=cover lets the page draw under
+     the status and navigation bars (Android 15+ forces that anyway), so the
+     content is pushed back inside them here. All 0 on a plain desktop. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 html,
@@ -29,6 +37,19 @@ body {
 
 body {
   transition: background 0.25s ease, color 0.25s ease;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  /* A drag across the maze must never scroll, bounce or pull-to-refresh. */
+  overscroll-behavior: none;
+}
+
+@layer utilities {
+  /* Full-height screens, less the system bars the body is padded by. */
+  .min-h-screen-safe {
+    min-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+  }
+  .h-screen-safe {
+    height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+  }
 }
 
 * {

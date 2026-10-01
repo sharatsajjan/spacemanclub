@@ -70,7 +70,7 @@ export default function PlayPage() {
     return (
       <>
         <ThemeStyle themeId={profile.theme} />
-        <main className="min-h-screen bg-outer flex items-center justify-center">
+        <main className="min-h-screen-safe bg-outer flex items-center justify-center">
           <p className="text-sub text-sm">Building maze&hellip;</p>
         </main>
       </>
@@ -93,9 +93,9 @@ export default function PlayPage() {
   return (
     <>
       <ThemeStyle themeId={profile.theme} />
-      {/* dvh, not vh: on mobile the address bar would otherwise push the
-          booster bar off the bottom of the screen. */}
-      <main className="h-[100dvh] bg-outer flex flex-col">
+      {/* dvh, not vh (see .h-screen-safe): on mobile the address bar would
+          otherwise push the booster bar off the bottom of the screen. */}
+      <main className="h-screen-safe bg-outer flex flex-col">
         <div className="w-full max-w-xl mx-auto flex flex-col flex-1 min-h-0 px-3 py-4">
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => router.push("/")} aria-label="Back to home" className="text-sub">
